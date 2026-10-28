@@ -110,7 +110,9 @@ Every event is one JSON object:
   advance it). `ingest` is pre-hop, so `node_entered{node:"ingest"}` carries `hop:0` (before
   the first search hop).
 - Lane↔condition: `run_started.condition` ∈ `{none, prompt, moat, moat_prompt}`;
-  `none`/`prompt` → `lane:"baseline"`, `moat`/`moat_prompt` → `lane:"moat"`.
+  `none`/`prompt` → `lane:"baseline"`, `moat`/`moat_prompt` → `lane:"moat"`. This pairing is
+  **enforced** (`make_event`/`check_stream` reject a `run_started` whose condition and lane
+  disagree).
 
 ### Reconnect / resume
 

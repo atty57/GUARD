@@ -346,6 +346,11 @@ def _check_event(e) -> None:
             assert d.rechecked is True, f"tier-2 rewrite must be rechecked (seq {e.seq})"
     elif e.type == "hop_started":
         assert e.data.hop == e.hop, f"hop_started envelope/data hop mismatch (seq {e.seq})"
+    elif e.type == "run_started":
+        cond, lane = e.data.condition, e.lane
+        ok = (lane == "baseline" and cond in ("none", "prompt")) or \
+             (lane == "moat" and cond in ("moat", "moat_prompt"))
+        assert ok, f"condition {cond!r} not allowed on lane {lane!r} (seq {e.seq})"
 
 
 def check_stream(events: list, name: str) -> None:
@@ -361,16 +366,17 @@ def check_stream(events: list, name: str) -> None:
         assert e.seq > last, f"{name}: seq not strictly increasing at {e.seq}"
         last = e.seq
 
-    # run_started binds lane -> run_id; the lanes of a group have distinct run_ids.
+    # run_started binds the whole (group_id, lane, run_id) tuple; the lanes of a group have
+    # distinct run_ids.
     lane_run: dict[str, str] = {}
     announced: set[str] = set()
-    group_ids: set[str] = set()
+    started: set[tuple[str, str, str]] = set()
     for e in events:
         if e.type == "run_started":
             assert e.lane not in lane_run, f"{name}: lane {e.lane} started twice"
             lane_run[e.lane] = e.run_id
             announced.update(e.data.lanes)
-            group_ids.add(e.group_id)
+            started.add((e.group_id, e.lane, e.run_id))
     assert announced == set(lane_run), \
         f"{name}: announced lanes {announced} != started lanes {set(lane_run)}"
     assert len(set(lane_run.values())) == len(lane_run), \
@@ -379,7 +385,7 @@ def check_stream(events: list, name: str) -> None:
     # indexes for the dispatch / commit cross-references.
     decisions: dict[int, GuardDecisionEvent] = {}
     dispatched: set[tuple[str, int]] = set()
-    previews: set[tuple[int, str, str]] = set()
+    previews: dict[tuple[int, str, str], SecretIntervalUpdateData] = {}
     for e in events:
         if e.type == "guard_decision":
             decisions[e.seq] = e
@@ -388,11 +394,11 @@ def check_stream(events: list, name: str) -> None:
         elif e.type == "error" and e.data.dispatched:
             dispatched.add((e.run_id, e.hop))
         elif e.type == "secret_interval_update" and not e.data.committed:
-            previews.add((e.data.decision_seq, e.data.secret_id, e.data.basis))
+            previews[(e.data.decision_seq, e.data.secret_id, e.data.basis)] = e.data
 
-    # Every interval points to a decision on its own (run_id, hop). A committed interval
-    # needs a pass/rewrite decision, a matching final-basis preview, and a dispatched query
-    # -- a blocked decision can never back a commit.
+    # Every interval points to a decision on its own (run_id, hop). A committed interval needs
+    # a pass/rewrite decision, a dispatched query, and numbers equal to its own final preview
+    # -- a blocked decision can never back a commit, and a commit cannot restate the preview.
     for e in events:
         if e.type != "secret_interval_update":
             continue
@@ -404,8 +410,10 @@ def check_stream(events: list, name: str) -> None:
             assert dec.data.decision in ("pass", "rewrite"), \
                 f"{name}: committed interval cannot be backed by a block (seq {e.seq})"
             assert d.basis == "final", f"{name}: committed interval must be basis=final (seq {e.seq})"
-            assert (d.decision_seq, d.secret_id, "final") in previews, \
-                f"{name}: committed interval has no matching preview (seq {e.seq})"
+            pv = previews.get((d.decision_seq, d.secret_id, "final"))
+            assert pv is not None, f"{name}: committed interval has no matching preview (seq {e.seq})"
+            assert (d.after, d.width_ratio, d.bits) == (pv.after, pv.width_ratio, pv.bits), \
+                f"{name}: committed interval must equal its preview (seq {e.seq})"
             assert (e.run_id, e.hop) in dispatched, \
                 f"{name}: committed interval without a dispatched query (seq {e.seq})"
 
@@ -415,12 +423,12 @@ def check_stream(events: list, name: str) -> None:
             assert (e.run_id, e.hop) in dispatched, \
                 f"{name}: committed profile_update without a dispatched query (seq {e.seq})"
 
-    # each announced (group_id, lane, run_id) completes exactly once.
+    # each run_complete must match a run_started on the exact (group_id, lane, run_id) tuple.
     completed: dict[str, int] = {}
     for e in events:
         if e.type == "run_complete":
-            assert e.group_id in group_ids and lane_run.get(e.lane) == e.run_id, \
-                f"{name}: run_complete (group,lane,run) not bound by run_started (seq {e.seq})"
+            assert (e.group_id, e.lane, e.run_id) in started, \
+                f"{name}: run_complete (group,lane,run) has no matching run_started (seq {e.seq})"
             completed[e.lane] = completed.get(e.lane, 0) + 1
             assert e.data.rewritten <= e.data.sent, \
                 f"{name}: rewritten must be <= sent (seq {e.seq})"
@@ -482,6 +490,59 @@ def _neg_nan_hit_score() -> None:
                run_id="r", lane="moat", hop=1, seq=0)
 
 
+def _rs(cond):
+    return {"task_id": "t", "condition": cond, "tau": 0.5, "model": "m", "policy_hash": "h",
+            "replay": True, "lanes": ["baseline", "moat"]}
+
+
+def _neg_completion_group_mismatch() -> None:
+    """A run_complete whose (group_id, lane, run_id) tuple was never started."""
+    evs = [
+        make_event("hello", "g", {"schema": SCHEMA, "group_id": "g"}),
+        make_event("run_started", "g", _rs("none"), run_id="B", lane="baseline", hop=0, seq=0),
+        make_event("run_started", "other-group", _rs("moat"), run_id="M", lane="moat", hop=0, seq=1),
+        make_event("run_complete", "g", {"status": "completed", "hops": 1, "sent": 1,
+                   "rewritten": 0, "blocked": 0, "trace_url": None},
+                   run_id="M", lane="moat", hop=1, seq=2),
+    ]
+    check_stream(evs, "neg_completion_group_mismatch")
+
+
+def _neg_commit_not_equal_preview() -> None:
+    """A committed interval whose (after, width_ratio, bits) differ from its preview."""
+    base = {"secret_id": "S", "dim": "energy_density", "unit": "Wh/kg", "prior": [150, 500],
+            "decision_seq": 1}
+    evs = [
+        make_event("hello", "g", {"schema": SCHEMA, "group_id": "g"}),
+        make_event("run_started", "g", {"task_id": "t", "condition": "moat", "tau": 0.5,
+                   "model": "m", "policy_hash": "h", "replay": True, "lanes": ["moat"]},
+                   run_id="r", lane="moat", hop=0, seq=0),
+        make_event("guard_decision", "g", {"decision": "rewrite", "tier": 1, "original": "a",
+                   "final": "b", "diff": [{"op": "insert", "text": "b"}], "leak_types": ["range"],
+                   "secrets_touched": ["S"], "reasons": ["x"], "latency_ms": {"total": 1.0}},
+                   run_id="r", lane="moat", hop=1, seq=1),
+        make_event("secret_interval_update", "g", {**base, "before": [150, 500], "after": [150, 500],
+                   "width_ratio": 1.0, "bits": 0.0, "status": "safe", "committed": False,
+                   "basis": "final"}, run_id="r", lane="moat", hop=1, seq=2),
+        make_event("search_results", "g", {"query": "b", "corpus": "c", "corpus_sha": "s",
+                   "hits": []}, run_id="r", lane="moat", hop=1, seq=3),
+        make_event("secret_interval_update", "g", {**base, "before": [150, 500], "after": [372, 372],
+                   "width_ratio": 0.0, "bits": 8.45, "status": "warning", "committed": True,
+                   "basis": "final"}, run_id="r", lane="moat", hop=1, seq=4),
+        make_event("run_complete", "g", {"status": "completed", "hops": 1, "sent": 1,
+                   "rewritten": 1, "blocked": 0, "trace_url": None},
+                   run_id="r", lane="moat", hop=1, seq=5),
+    ]
+    check_stream(evs, "neg_commit_not_equal_preview")
+
+
+def _neg_condition_lane_mismatch() -> None:
+    """condition=none declared on the moat lane."""
+    make_event("run_started", "g", {"task_id": "t", "condition": "none", "tau": 0.5, "model": "m",
+               "policy_hash": "h", "replay": True, "lanes": ["baseline", "moat"]},
+               run_id="r", lane="moat", hop=0, seq=0)
+
+
 def _main() -> int:
     files = sorted(_FIXTURES.glob("*.jsonl"))
     assert files, f"no fixtures found in {_FIXTURES}"
@@ -496,6 +557,9 @@ def _main() -> int:
     _expect_fail("commit backed by a blocked decision_seq", _neg_commit_backed_by_block)
     _expect_fail("both lanes share one run_id", _neg_same_run_id_both_lanes)
     _expect_fail("Hit.score = NaN", _neg_nan_hit_score)
+    _expect_fail("run_complete tuple never started", _neg_completion_group_mismatch)
+    _expect_fail("committed interval != its preview", _neg_commit_not_equal_preview)
+    _expect_fail("condition none on moat lane", _neg_condition_lane_mismatch)
     print("All negative tests correctly rejected.")
     return 0
 
