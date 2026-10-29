@@ -1,5 +1,6 @@
 # MOAT policy — dev split only (Halden Cells, HX-9). All values are fictional.
-# Test-split secrets (Tessaro) are kept out of the repo until evaluation.
+# Values are provisional until validation check 8 (docs/DATA_SPEC.md §8).
+# Test-split secrets stay in a gitignored path until evaluation.
 # Field meanings: guard/policy.py. Where the numbers come from: docs/DATA_SPEC.md §2.
 version: moat.policy.v1
 tau: 1.0
