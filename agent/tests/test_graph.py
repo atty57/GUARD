@@ -219,3 +219,29 @@ async def test_guard_history_carries_real_provenance():
     assert len(spy.histories) >= 2, "need a second hop to inspect the history"
     first_sent = spy.histories[1][0]                   # the query dispatched on hop 1
     assert first_sent["hop"] == 1 and first_sent["run_id"] == "run-xyz"
+
+
+# F8: a schema error caught only by make_event (NaN score) must keep the dispatch accounting.
+async def test_schema_invalid_hit_retains_dispatch_accounting():
+    def _nan_search(query, k=5):
+        return [{"id": "US1", "title": "t", "score": float("nan")}]     # NaN fails validation
+
+    events = await collect("demo", "none", search=_nan_search, client=FakeClient())
+
+    err = _by_type(events, "error")[0]
+    assert err.data.where == "search" and err.data.dispatched is True
+    assert _by_type(events, "search_results") == []
+    assert events[-1].data.sent == 1 and events[-1].data.hops == 1
+    check_stream(events, "nan-score")
+
+
+# F9: a profile proposal on an unsatisfiable block is prevented, not safe.
+async def test_skipped_profile_proposal_is_prevented():
+    prof = {"revealed": {"cathode": "NCM811"}, "k": 2, "k_min": 5}
+    guard = StubGuard(mode="block", block_kind="unsatisfiable", profile=prof)
+    events = await collect("demo", "moat", guard=guard, client=FakeClient())
+
+    profiles = _by_type(events, "profile_update")
+    assert profiles and all(p.data.status == "prevented" for p in profiles)
+    assert _by_type(events, "hop_skipped")[0].data.reason == "k_anonymity_unreachable"
+    check_stream(events, "prevented-profile")

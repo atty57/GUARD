@@ -41,7 +41,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 
-from agent.events import Condition, check_stream, make_event
+from agent.events import Condition, SearchResultsData, check_stream, make_event
 from agent.llm import LLMClient
 
 MAX_HOPS, MAX_REDRAFTS = 6, 2
@@ -256,9 +256,11 @@ def _build_graph(guard, search, client):
             "block_kind": res.block_kind, "rechecked": res.rechecked}})
         for iv in res.intervals:                            # previews, committed:false
             w({"type": "secret_interval_update", "data": {**iv, "committed": False}})
-        if res.profile:                                     # ProfileProposal carries no status
+        if res.profile:                                     # ProfileProposal carries no status;
+            # a block means the query won't dispatch -> the proposal is prevented, not safe.
+            pstatus = "prevented" if res.action == "block" else res.profile.get("status", "safe")
             w({"type": "profile_update",
-               "data": {"status": "safe", **res.profile, "committed": False}})
+               "data": {**res.profile, "status": pstatus, "committed": False}})
 
         if res.action in ("pass", "rewrite"):
             upd = {"guard_decision": res.action, "approved_query": res.query,
@@ -299,16 +301,17 @@ def _build_graph(guard, search, client):
         base = {"sent_queries": [q], "query_log": [{"hop": s["search_hops"] + 1, "query": q}],
                 "search_hops": s["search_hops"] + 1, "redrafts_this_hop": 0,
                 "approved_query": None, "pending_commit": None, "guard_decision": None}
-        try:                                                # projection is inside the handler:
-            hits = search(q, k=5)                           # a malformed hit must not drop the
-            projected = [{"id": h["id"], "title": h["title"],  # already-dispatched accounting
-                          "score": h["score"]} for h in hits]
+        results = {"query": q, "corpus": "patents-stub", "corpus_sha": "stub", "hits": []}
+        try:                                                # projection AND validation inside the
+            hits = search(q, k=5)                           # handler: a malformed hit or a schema
+            results["hits"] = [{"id": h["id"], "title": h["title"],  # error (e.g. NaN score) that
+                                "score": h["score"]} for h in hits]   # make_event would raise must
+            SearchResultsData.model_validate(results)       # not drop the already-dispatched hop
         except Exception as exc:                            # dispatched: the query already left
             w({"type": "error", "data": {"where": "search", "message": str(exc),
                                          "fail_closed": True, "dispatched": True}})
             return base
-        w({"type": "search_results", "data": {
-            "query": q, "corpus": "patents-stub", "corpus_sha": "stub", "hits": projected}})
+        w({"type": "search_results", "data": results})
         return {**base, "results": hits}
 
     async def skip_hop(s):
