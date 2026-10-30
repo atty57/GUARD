@@ -1,5 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { EVENT_TYPES, type Lane, type RunEvent } from './types'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { EVENT_TYPES, type GuardDecisionEvent, type Lane, type RunEvent } from './types'
+import { buildLanes, type HopView, type LaneView } from '@/lib/runState'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 const REPLAY_URL = '/api/replay/compare_run/stream'
 
@@ -25,117 +29,134 @@ function App() {
 
     const source = new EventSource(REPLAY_URL)
     sourceRef.current = source
-
-    // The run is over once every lane announced in run_started has a run_complete.
     const announced = new Set<Lane>()
     const completed = new Set<Lane>()
 
     function handle(message: MessageEvent) {
       const event: RunEvent = JSON.parse(message.data)
       setEvents((previous) => [...previous, event])
-
       if (event.type === 'run_started') event.data.lanes.forEach((l) => announced.add(l))
       if (event.type === 'run_complete' && event.lane) completed.add(event.lane)
-
       const allDone = announced.size > 0 && [...announced].every((l) => completed.has(l))
       if (allDone || (event.type === 'error' && event.data.where === 'graph')) {
-        source.close() // otherwise the browser reconnects and replays forever
+        source.close()
         setRunning(false)
       }
     }
 
-    // Named SSE events (`event: guard_decision`) only reach listeners for that name,
-    // not onmessage, so we register one listener per event type.
     EVENT_TYPES.forEach((type) => source.addEventListener(type, handle))
-
     source.onerror = () => {
       source.close()
       setRunning(false)
     }
   }
 
-  const lane = (name: Lane) => events.filter((e) => e.lane === name)
+  // Recomputed only when events change.
+  const lanes = useMemo(() => buildLanes(events), [events])
 
   return (
-    <main style={{ padding: 32, fontFamily: 'sans-serif', textAlign: 'left' }}>
-      <h1>GUARD</h1>
-      <p>Backend status: {status}</p>
-      <button onClick={startReplay} disabled={running}>
-        {running ? 'Replaying...' : 'Replay compare run'}
-      </button>
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="flex items-center justify-between border-b px-8 py-4">
+        <div>
+          <h1 className="text-xl font-semibold">MOAT Guard</h1>
+          <p className="text-sm text-muted-foreground">
+            What a research agent's searches reveal, with and without the guard
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant={status === 'ok' ? 'secondary' : 'destructive'}>backend: {status}</Badge>
+          <Button onClick={startReplay} disabled={running}>
+            {running ? 'Replaying…' : 'Replay compare run'}
+          </Button>
+        </div>
+      </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
-        <LaneColumn title="No guard" events={lane('baseline')} />
-        <LaneColumn title="With MOAT" events={lane('moat')} />
-      </div>
-    </main>
+      <main className="grid grid-cols-1 gap-6 p-8 lg:grid-cols-2">
+        <LanePanel title="No guard" lane={lanes.baseline} />
+        <LanePanel title="With MOAT" lane={lanes.moat} />
+      </main>
+    </div>
   )
 }
 
-function LaneColumn({ title, events }: { title: string; events: RunEvent[] }) {
+function LanePanel({ title, lane }: { title: string; lane: LaneView }) {
   return (
-    <section>
-      <h2>{title}</h2>
-      <ol>
-        {events.map((event) => (
-          <li key={event.seq ?? event.type} style={{ margin: '8px 0' }}>
-            <EventLine event={event} />
-          </li>
-        ))}
-      </ol>
+    <section className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        {lane.started && <Badge variant="outline">condition: {lane.started.condition}</Badge>}
+      </div>
+
+      {lane.hops.length === 0 && (
+        <p className="text-sm text-muted-foreground">Press “Replay compare run” to start.</p>
+      )}
+
+      {lane.hops.map((hop) => <HopCard key={hop.hop} hop={hop} />)}
+
+      {lane.observer.map((o, i) => (
+        <p key={i} className="text-sm">
+          Attacker guesses <strong>{o.attr}</strong>: {o.p10}–{o.p90}
+        </p>
+      ))}
+
+      {lane.report && (
+        <Card size="sm">
+          <CardHeader><CardTitle>Final report</CardTitle></CardHeader>
+          <CardContent>{lane.report}</CardContent>
+        </Card>
+      )}
+
+      {lane.complete && (
+        <p className="text-sm text-muted-foreground">
+          Sent {lane.complete.sent} · rewritten {lane.complete.rewritten} · blocked {lane.complete.blocked}
+        </p>
+      )}
     </section>
   )
 }
 
-// Rough one-line text for each event. Step S3 replaces this with real cards.
-function EventLine({ event }: { event: RunEvent }) {
-  switch (event.type) {
-    case 'run_started':
-      return <span>Run started (condition: {event.data.condition}, tau {event.data.tau})</span>
-    case 'node_entered':
-      return <small style={{ opacity: 0.6 }}>→ {event.data.node}</small>
-    case 'hop_started':
-      return <span>Hop {event.data.hop}: {event.data.subgoal}</span>
-    case 'query_drafted':
-      return <span>Drafted: <code>{event.data.draft}</code></span>
-    case 'guard_decision': {
-      const d = event.data
-      return (
-        <span>
-          Guard <strong>{d.decision}</strong>
-          {d.final ? <> → sent <code>{d.final}</code></> : ' → nothing sent'}
-          <br />
-          <small>{d.reasons.join('; ')}</small>
-        </span>
-      )
-    }
-    case 'secret_interval_update': {
-      const d = event.data
-      return (
-        <span>
-          Leak meter {d.committed ? '(sent)' : '(preview)'}: {d.dim} {d.after[0]}–{d.after[1]} {d.unit} · {d.status}
-        </span>
-      )
-    }
-    case 'profile_update':
-      return <span>Profile {event.data.committed ? '(sent)' : '(preview)'}: {Object.values(event.data.revealed).join(', ')} · k={event.data.k}</span>
-    case 'search_results':
-      return <span>Search returned {event.data.hits.length} hit(s)</span>
-    case 'observer_estimate':
-      return <span>Attacker guesses {event.data.attr}: {event.data.p10}–{event.data.p90}</span>
-    case 'report_chunk':
-      return <span>Report: {event.data.text}</span>
-    case 'run_complete':
-      return <span>Done: sent {event.data.sent}, rewritten {event.data.rewritten}, blocked {event.data.blocked}</span>
-    case 'hop_skipped':
-      return <span>Hop skipped: {event.data.reason}</span>
-    case 'injection_detected':
-      return <span>Injection detected in {event.data.doc_id}: {event.data.action}</span>
-    case 'error':
-      return <span>Error in {event.data.where}: {event.data.message}</span>
-    default:
-      return <span>{event.type}</span>
-  }
+function HopCard({ hop }: { hop: HopView }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Hop {hop.hop}</CardTitle>
+        {hop.subgoal && <CardDescription>{hop.subgoal}</CardDescription>}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {hop.decisions.map((d, i) => <DecisionRow key={i} decision={d} />)}
+        {hop.decisions.length === 0 && hop.drafts.map((draft, i) => (
+          <Query key={i} label="Drafted" text={draft} />
+        ))}
+        {hop.skipped && <Badge variant="destructive">Hop skipped: {hop.skipped.reason}</Badge>}
+      </CardContent>
+    </Card>
+  )
+}
+
+function DecisionRow({ decision }: { decision: GuardDecisionEvent['data'] }) {
+  const label = { pass: 'PASS', rewrite: 'REWRITE', block: 'BLOCKED' }[decision.decision]
+  const variant = decision.decision === 'block' ? 'destructive' : decision.decision === 'rewrite' ? 'default' : 'secondary'
+  return (
+    <div className="flex flex-col gap-2">
+      <Badge variant={variant}>{label}</Badge>
+      <Query label="Drafted" text={decision.original} />
+      {decision.final !== null
+        ? decision.final !== decision.original && <Query label="Sent" text={decision.final} />
+        : <p className="text-sm text-destructive">Nothing sent</p>}
+      {decision.reasons.length > 0 && (
+        <p className="text-xs text-muted-foreground">{decision.reasons.join('; ')}</p>
+      )}
+    </div>
+  )
+}
+
+function Query({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <code className="rounded-md bg-muted px-2 py-1 font-mono text-xs">{text}</code>
+    </div>
+  )
 }
 
 export default App
