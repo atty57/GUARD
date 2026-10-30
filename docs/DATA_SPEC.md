@@ -153,7 +153,7 @@ Everything above is synthetic. The corpus the agent searches is **real public da
 | --- | --- | --- |
 | Source | USPTO public data (e.g. PatentsView bulk files) or Google Patents Public Datasets | Openly licensed, so the corpus can sit in a public repo. No Derwent or other licensed exports. |
 | Selection | CPC H01M 4/525 (Ni/Co/Fe mixed-oxide cathodes, verified); plus Li-ion cells, Si anodes and pouch casings (exact H01M subgroups to confirm when building) | Every task template needs relevant hits: cathode firing, anodes, cells, casings |
-| Fields kept | id, title, abstract, first claim, CPC codes, publication date | Enough for BM25 and the report; full text makes the corpus heavy |
+| Fields kept | id, title, abstract, CPC codes, publication date | Enough for BM25 and the report. Claims come in a separate large table, so they're left out to keep the corpus build fast. |
 | Size | ~3–5k patents (Atharva's plan) | Large enough that the right patents don't stand out trivially |
 | Frozen | One snapshot, recorded as `corpus_sha` (already in the `search_results` event) | Same results in every run, so conditions are comparable |
 | Gold patents | ≥ 3 relevant patents per task, listed in `tasks.jsonl` (`gold_patents`) | Measures whether MOAT keeps search useful |
