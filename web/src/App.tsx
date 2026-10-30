@@ -44,6 +44,9 @@ function App() {
     const completed = new Set<Lane>()
 
     function handle(message: MessageEvent) {
+      // A connection problem also arrives on the 'error' listener, with no data. Skip it here;
+      // onerror below decides what to do with it.
+      if (!message.data) return
       const event: RunEvent = JSON.parse(message.data)
       setEvents((previous) => [...previous, event])
       if (event.type === 'run_started') event.data.lanes.forEach((l) => announced.add(l))
@@ -56,7 +59,12 @@ function App() {
     }
 
     EVENT_TYPES.forEach((type) => source.addEventListener(type, handle))
-    source.onerror = () => {
+    // Name clash: the contract has an event called 'error', and EventSource also uses 'error'
+    // for its own "connection problem" signal, so both reach onerror. A server 'error' event
+    // carries data (e.g. a search timeout the run recovers from) and must NOT end the stream.
+    // Only a real connection problem (no data) closes it.
+    source.onerror = (e) => {
+      if (e instanceof MessageEvent && e.data) return
       source.close()
       setRunning(false)
     }
@@ -190,6 +198,10 @@ function LaneStatus({ lane, waiting }: { lane: LaneView; waiting: boolean }) {
         {failed ? 'Run failed' : 'Done'}
       </p>
     )
+  }
+  if (lane.started && !waiting) {
+    // The stream ended (or was closed) before this lane sent run_complete.
+    return <p className="text-sm text-amber-400">Stopped before finishing</p>
   }
   if (lane.started) {
     return (
