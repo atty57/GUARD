@@ -86,8 +86,8 @@ function App() {
         {/* Each Row puts the baseline item on the left and the MOAT item on the right,
             so matching cards always sit at the same height. */}
         <Row
-          left={<LaneHeading title="No guard" lane={lanes.baseline} />}
-          right={<LaneHeading title="With MOAT" lane={lanes.moat} />}
+          left={<LaneHeading title="No guard" lane={lanes.baseline} waiting={running} />}
+          right={<LaneHeading title="With MOAT" lane={lanes.moat} waiting={running} />}
         />
 
         {!started && (
@@ -138,13 +138,50 @@ function Row({ left, right }: { left: React.ReactNode; right: React.ReactNode })
   )
 }
 
-function LaneHeading({ title, lane }: { title: string; lane: LaneView }) {
+// What each graph node means, in words a judge would understand.
+const NODE_LABEL: Record<string, string> = {
+  ingest: 'Reading internal docs',
+  draft_query: 'Drafting a search',
+  moat_guard: 'MOAT checking the query',
+  passthrough: 'Sending without a check',
+  web_search: 'Searching patents',
+  skip_hop: 'Skipping a blocked search',
+  reflect: 'Deciding what to search next',
+  generate_report: 'Writing the report',
+}
+
+function LaneHeading({ title, lane, waiting }: { title: string; lane: LaneView; waiting: boolean }) {
   return (
-    <div className="flex items-center justify-between">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      {lane.started && <Badge variant="outline">condition: {lane.started.condition}</Badge>}
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        {lane.started && <Badge variant="outline">condition: {lane.started.condition}</Badge>}
+      </div>
+      <LaneStatus lane={lane} waiting={waiting} />
     </div>
   )
+}
+
+// One line under the lane title: waiting, what the agent is doing right now, or done.
+function LaneStatus({ lane, waiting }: { lane: LaneView; waiting: boolean }) {
+  if (lane.complete) {
+    const failed = lane.complete.status === 'failed'
+    return (
+      <p className={`text-sm ${failed ? 'text-red-400' : 'text-muted-foreground'}`}>
+        {failed ? 'Run failed' : 'Done'}
+      </p>
+    )
+  }
+  if (lane.started) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
+        <span className="size-2 animate-pulse rounded-full bg-emerald-400 motion-reduce:animate-none" />
+        {NODE_LABEL[lane.currentNode ?? ''] ?? 'Running'}…
+      </p>
+    )
+  }
+  if (waiting) return <p className="text-sm text-muted-foreground">Waiting to start…</p>
+  return null
 }
 
 // Placeholders keep the rows lined up when only one lane has something to show.
