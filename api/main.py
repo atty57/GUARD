@@ -5,8 +5,6 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 
-from fake_events import FAKE_MOAT_RUN
-
 app = FastAPI(title="GUARD API")
 
 # Recorded runs live in runs/fixtures/ at the repo root (one event per line, moat.v2 format).
@@ -16,19 +14,6 @@ FIXTURES_DIR = Path(__file__).resolve().parent.parent / "runs" / "fixtures"
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
-
-
-# --- Old fake stream (removed in step 7c, once the frontend uses fixtures) ---
-
-async def fake_event_stream():
-    for event in FAKE_MOAT_RUN:
-        await asyncio.sleep(0.8)
-        yield f"data: {json.dumps(event)}\n\n"
-
-
-@app.get("/api/stream/fake")
-def stream_fake():
-    return StreamingResponse(fake_event_stream(), media_type="text/event-stream")
 
 
 # --- Replay a recorded run in the moat.v2 SSE format ---
