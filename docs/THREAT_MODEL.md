@@ -60,7 +60,8 @@ Leak types use the frozen `LeakType` vocabulary (INTERFACES §3).
 | `identifier` | "Ostrava", "3Q27" | Tier 0: names and aliases | done (#38) |
 | `range` | "260–280 Wh/kg", "above 265 Wh/kg" | Tier 1 ledger: width, bits, threshold side | done (ledger PR) |
 | `split` | "above 250" then "below 280" | Tier 1 ledger: cumulative interval over sent queries | done (ledger PR) |
-| `intent_profile` | high-Ni + pouch + European OEM + SOP 2027 | Tier 1 profile check (`k_min`) | planned |
+| `intent_profile` | high-Ni + pouch + European OEM + SOP 2027 | Tier 1 profile check: candidate products that still fit, `k_min` | done (ledger PR) |
+| approximation | "approximately 600 mAh/g" (secret 620, outside `bound_tol`) | H4 | planned |
 | `derived`, `relative` | "5 Ah, 3.7 V, 68 g" → 272 Wh/kg | H4 | planned |
 | `encoding` | "two hundred seventy Wh/kg" | H4 | planned |
 | `process_fingerprint` | temperature + dopant + atmosphere together | planned | planned |
@@ -74,6 +75,7 @@ Leak types use the frozen `LeakType` vocabulary (INTERFACES §3).
 | P3 | Fail closed: a guard exception is a block; a blocked draft is never dispatched and never enters the history | agent graph + guard | `agent/tests/test_graph.py` (`test_guard_exception_counts_as_block`, `test_block_at_cap_skips_and_never_searches`) |
 | P4 | Separation: the guard reads the policy only; the agent reads docs; the observer reads dispatched queries only; test-split secrets stay out of the repo | repo layout, DATA_SPEC §7 | `agent/tests/test_graph.py` (`test_state_has_no_ground_truth_field`) |
 | P5 | Guard `reasons` never contain a secret value | guard | `test_reasons_never_contain_the_secret` |
+| P6 | While our product still fits what has been sent, at least `k_min` candidate products fit it too | Tier 1 profile check | `guard/tests/test_profile.py` |
 
 Event logs are inside the boundary: `guard_decision.original` records the blocked draft for audit, so logs from real deployments must be handled like the internal docs.
 
@@ -85,6 +87,7 @@ Event logs are inside the boundary: `guard_decision.original` records the blocke
 | `bits` treats every value in the prior as equally likely | `bits` is an approximation; a real observer may know more | Official leakage metric is the LLM observer's gain over its zero-query baseline (DATA_SPEC §8 check 8); ledger bits are the live meter only |
 | Priors and min widths are design choices (DATA_SPEC §2) | Results depend on them | `tau` sweep (one knob scales all min widths and the bits budget) |
 | All queries in a run are linkable; the ledger is per run | Leaks spread across separate sessions are not tracked | Out of scope (§7) |
+| The candidate-product catalog stands in for the market an observer knows | `k` is only as good as the catalog; a small catalog over-blocks, a padded one under-blocks | Catalog is a reviewed data file per company (`data/profile_catalog.*.yaml`) |
 | The model provider is trusted | Prompts and docs reach Meta's API | Standard tier only; a self-hosted open-weight model would remove this assumption |
 
 ## 7. Out of scope
