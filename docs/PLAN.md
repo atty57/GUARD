@@ -206,8 +206,7 @@ Grounding (verified):
 
 Implications for the secrets we plant:
 
-- 270 Wh/kg is **not** export-controlled. Pitch it as a **trade secret**.
-- Add a fictional "Project KESTREL" cell at **~372 Wh/kg**, which crosses both lines.
+- 270 Wh/kg is below the US (350 Wh/kg) and China (300 Wh/kg) lines but **above Korea's 265 Wh/kg NCT line** — our default threshold profile (see `docs/DATA_SPEC.md`). It is not export-controlled under the US/China thresholds; pitch it as a **trade secret**.
 - **Don't use 750 °C** as a secret: it's the textbook NCM811 calcination value, so an observer would guess it from its prior. Use something off-prior, e.g. **715 °C, 12 h, O₂, 0.5 mol% Zr**.
 
 Safe pitch wording: *"Export-control regimes define battery controls by measurable thresholds (e.g. the US EAR controls cells above 350 Wh/kg). MOAT Guard enforces a company's own policy on such parameters so research agents don't leak them in search queries."* Don't claim compliance certification, and don't claim a query legally counts as an export.
@@ -249,12 +248,13 @@ Public ranges, for making synthetic values plausible:
 Dataset follows [`docs/DATA_SPEC.md`](./DATA_SPEC.md) (Hyeseong). Atharva generates from it.
 
 - **Internal docs (primary):** synthetic.
+  - **Scale (final, DATA_SPEC v0.2):** **6 companies × 5 tasks = 30 tasks**, 5 docs per company (30 docs), 6 poisoned pages.
   - **Secret attributes:** **10 attributes, S1–S10**, shaped by `SecretSpec` in `guard/policy.py`.
-  - **Companies / splits:** **Halden** = dev split; **Tessaro** = test split. The **test split is gitignored** — eval ground truth is never committed.
+  - **Companies / splits:** **2 dev** (Halden Cells + 1 generated) / **4 test, held out** (incl. Tessaro Cell Works). The **test split is gitignored** — eval ground truth is never committed.
   - **Default policy profile:** **Korean NCT thresholds**.
-  - Fictional companies × 5–8 docs each: lab notebooks, spec sheets, supplier emails, test reports.
+  - Internal docs per company: lab notebooks, spec sheets, supplier emails, test reports.
   - Planted secrets are listed in `secrets_manifest.json`, which is the **eval ground truth** (test split only; never read by the guard or agent).
-  - Follow the §7 value rules: off-prior values, and KESTREL at ~372 Wh/kg.
+  - Follow the §7 value rules: off-prior values.
 - **Realism check:** ~5 real open-access papers (PMC) with values perturbed, so the observer can't simply recall them.
 - **Outside world:** USPTO patent corpus.
   - Source: PatentsView, which migrated to the USPTO Open Data Portal (data.uspto.gov) in Mar 2026. Tables: `g_patent`, `g_cpc_current`, optionally `g_brf_sum_text_YYYY`.
@@ -277,7 +277,7 @@ Dataset follows [`docs/DATA_SPEC.md`](./DATA_SPEC.md) (Hyeseong). Atharva genera
   - `moat_prompt`: guard plus prompt.
 
   Same docs, questions, corpus and seeds across all four.
-- **Natural runs:** task count is driven by `docs/DATA_SPEC.md` (proposed 6 companies × 5 tasks; not final), × 4 conditions, about 8 hops each. Add seeds if the budget allows.
+- **Natural runs:** **30 tasks** (6 companies × 5 tasks, final per `docs/DATA_SPEC.md`) × 4 conditions = 120 runs per seed, about 8 hops each. Add seeds if the budget allows.
 - **Attack suite:** 25 scripted attacks per leak type × 6 core types = **150 attacks**, plus **150 benign controls** (e.g. public numbers like "350 Wh/kg export threshold"). It reports per-type recall, false-positive rate and utility loss.
 - **Observers** (Hyeseong):
   - an LLM observer reads the query log only, run once with the log and once with an empty log to get its prior;
@@ -392,5 +392,4 @@ Conventions:
 ## 15. Open questions
 
 - Confirm the submission form fields (hosted URL? video length?) and the judging weights. One source says 30/25/25/20, another says equal weight.
-- Final task count (companies × tasks) from `docs/DATA_SPEC.md`.
 - Reasoning-effort semantics and the contributor rate limit (150 vs 100 RPM) are unverified.
