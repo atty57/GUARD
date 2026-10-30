@@ -14,7 +14,7 @@ function App() {
   const [status, setStatus] = useState('checking...')
   const [events, setEvents] = useState<RunEvent[]>([])
   const [running, setRunning] = useState(false)
-  const [runNames, setRunNames] = useState<string[]>([])
+  const [runs, setRuns] = useState<{ name: string; lanes: Lane[] }[]>([])
   const [selected, setSelected] = useState('compare_run')
   const sourceRef = useRef<EventSource | null>(null)
 
@@ -27,8 +27,8 @@ function App() {
     // Which recorded runs can be replayed.
     fetch('/api/replay')
       .then((res) => res.json())
-      .then((data: { runs: string[] }) => setRunNames(data.runs))
-      .catch(() => setRunNames([]))
+      .then((data: { runs: { name: string; lanes: Lane[] }[] }) => setRuns(data.runs))
+      .catch(() => setRuns([]))
   }, [])
 
   useEffect(() => () => sourceRef.current?.close(), [])
@@ -77,6 +77,14 @@ function App() {
   // What the rows need to know: has anything started, does either lane have a profile,
   // and which hop numbers appear in either lane.
   const started = Boolean(lanes.baseline.started || lanes.moat.started)
+
+  // Which lanes this run has. run_started lists them ("lanes": ["baseline", "moat"] or just
+  // ["moat"]). If nothing is known yet, show both so the empty layout still makes sense.
+  const announced = lanes.baseline.started?.lanes ?? lanes.moat.started?.lanes
+    // Before the stream says, use the lanes the backend listed for the selected run.
+    ?? runs.find((r) => r.name === selected)?.lanes
+  const shown = { baseline: announced ? announced.includes('baseline') : true,
+                  moat: announced ? announced.includes('moat') : true }
   const hasProfile = Boolean(lanes.baseline.profile || lanes.moat.profile)
   const hopNumbers = [...new Set([...lanes.baseline.hops, ...lanes.moat.hops].map((h) => h.hop))].sort((a, b) => a - b)
 
@@ -99,7 +107,7 @@ function App() {
             disabled={running}
             className="h-8 rounded-lg border bg-background px-2 text-sm"
           >
-            {(runNames.length ? runNames : [selected]).map((name) => (
+            {(runs.length ? runs.map((r) => r.name) : [selected]).map((name) => (
               <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>
             ))}
           </select>
@@ -113,6 +121,7 @@ function App() {
         {/* Each Row puts the baseline item on the left and the MOAT item on the right,
             so matching cards always sit at the same height. */}
         <Row
+          shown={shown}
           left={<LaneHeading title="No guard" lane={lanes.baseline} waiting={running} />}
           right={<LaneHeading title="With MOAT" lane={lanes.moat} waiting={running} />}
         />
@@ -122,11 +131,12 @@ function App() {
         )}
 
         {started && (
-          <Row left={<RunSummary lane={lanes.baseline} />} right={<RunSummary lane={lanes.moat} />} />
+          <Row shown={shown} left={<RunSummary lane={lanes.baseline} />} right={<RunSummary lane={lanes.moat} />} />
         )}
 
         {started && (
           <Row
+          shown={shown}
             left={<LeakMeter lane={lanes.baseline} priors={priors} />}
             right={<LeakMeter lane={lanes.moat} priors={priors} />}
           />
@@ -134,6 +144,7 @@ function App() {
 
         {hasProfile && (
           <Row
+          shown={shown}
             left={<ProfileSlot lane={lanes.baseline} />}
             right={<ProfileSlot lane={lanes.moat} />}
           />
@@ -141,6 +152,7 @@ function App() {
 
         {hopNumbers.map((n) => (
           <Row
+          shown={shown}
             key={n}
             left={<HopSlot hop={lanes.baseline.hops.find((h) => h.hop === n)} />}
             right={<HopSlot hop={lanes.moat.hops.find((h) => h.hop === n)} />}
@@ -148,19 +160,25 @@ function App() {
         ))}
 
         {(lanes.baseline.report || lanes.moat.report) && (
-          <Row left={<ReportSlot lane={lanes.baseline} />} right={<ReportSlot lane={lanes.moat} />} />
+          <Row shown={shown} left={<ReportSlot lane={lanes.baseline} />} right={<ReportSlot lane={lanes.moat} />} />
         )}
       </main>
     </div>
   )
 }
 
-// Two equal columns on wide screens; stacked on narrow ones.
-function Row({ left, right }: { left: React.ReactNode; right: React.ReactNode }) {
+// Puts the baseline item on the left and the MOAT item on the right, so matching cards line up.
+// A run with only one lane gets a single column instead of an empty half.
+function Row({ left, right, shown }: {
+  left: React.ReactNode
+  right: React.ReactNode
+  shown: { baseline: boolean; moat: boolean }
+}) {
+  const both = shown.baseline && shown.moat
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <div className="min-w-0">{left}</div>
-      <div className="min-w-0">{right}</div>
+    <div className={both ? 'grid grid-cols-1 gap-6 lg:grid-cols-2' : 'mx-auto w-full max-w-4xl'}>
+      {shown.baseline && <div className="min-w-0">{left}</div>}
+      {shown.moat && <div className="min-w-0">{right}</div>}
     </div>
   )
 }
