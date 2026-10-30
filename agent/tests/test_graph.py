@@ -31,6 +31,9 @@ from agent.graph import (
     stream_group,
 )
 from agent.llm import ReplayMiss
+from guard.policy import load_policy, policy_hash
+
+_POLICY = Path(__file__).resolve().parent.parent.parent / "data" / "policy.example.yaml"
 
 
 def _by_type(events, type_):
@@ -245,3 +248,37 @@ async def test_skipped_profile_proposal_is_prevented():
     assert profiles and all(p.data.status == "prevented" for p in profiles)
     assert _by_type(events, "hop_skipped")[0].data.reason == "k_anonymity_unreachable"
     check_stream(events, "prevented-profile")
+
+
+# --- Hyeseong PR-review asks ------------------------------------------------------------------
+# Ask 1(a): with the real example policy loaded, a blocking guard dispatches nothing.
+async def test_policy_param_blocks_leak_draft_and_dispatches_nothing():
+    policy = load_policy(_POLICY)
+    events = await collect("demo", "moat", guard=StubGuard(mode="block"),
+                           client=FakeClient(draft="0.272 kWh/kg"), policy=policy)
+
+    assert any("0.272 kWh/kg" in e.data.draft for e in _by_type(events, "query_drafted"))
+    assert _by_type(events, "search_results") == []        # nothing crossed the boundary
+    assert events[-1].data.sent == 0
+
+
+# Ask 1(b): run_started.policy_hash is the hash of the loaded policy.
+async def test_run_started_policy_hash_matches_loaded_policy():
+    policy = load_policy(_POLICY)
+    events = await collect("demo", "moat", guard=StubGuard(), client=FakeClient(), policy=policy)
+
+    assert _by_type(events, "run_started")[0].data.policy_hash == policy_hash(policy)
+
+
+# Ask 2: a blocked interval preview is stamped status "prevented".
+async def test_blocked_interval_preview_is_prevented():
+    iv = {"secret_id": "S1", "dim": "energy_density", "unit": "Wh/kg", "prior": [150, 350],
+          "before": [150, 350], "after": [270, 274], "width_ratio": 0.013, "bits": 6.3,
+          "status": "warning", "basis": "original"}        # 'warning' must be overridden on block
+    guard = StubGuard(mode="block", block_kind="redraftable", intervals=[iv])
+    events = await collect("demo", "moat", guard=guard, client=FakeClient(), policy=load_policy(_POLICY))
+
+    intervals = _by_type(events, "secret_interval_update")
+    assert intervals and all(e.data.status == "prevented" for e in intervals)
+    assert all(e.data.committed is False for e in intervals)
+    check_stream(events, "prevented-interval")

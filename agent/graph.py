@@ -43,11 +43,14 @@ from langgraph.graph import END, START, StateGraph
 
 from agent.events import Condition, SearchResultsData, check_stream, make_event
 from agent.llm import LLMClient
+from guard.policy import Policy, load_policy, policy_hash
 
 MAX_HOPS, MAX_REDRAFTS = 6, 2
+_REPO = Path(__file__).resolve().parent.parent
 # LLM recordings are {key,request,response} — NOT moat.v2 events — so they must live outside
 # runs/fixtures/, which `python -m agent.events` loads wholesale as the event contract.
-_DEFAULT_FIXTURE = Path(__file__).resolve().parent.parent / "runs" / "recordings" / "llm_demo.jsonl"
+_DEFAULT_FIXTURE = _REPO / "runs" / "recordings" / "llm_demo.jsonl"
+_DEFAULT_POLICY = _REPO / "data" / "policy.example.yaml"
 
 # TODO(A3): replace with the MosaicLeaks paper's exact privacy note (HANDOFF §10).
 PRIVACY_NOTE = (
@@ -88,15 +91,7 @@ def _initial_state(task: str, condition: str) -> dict:
 
 
 # --- guard / search contract stand-ins (docs/INTERFACES.md §1-2) ------------------------------
-@dataclass
-class Policy:
-    tau: float = 0.5
-    min_width_ratio: float = 0.3
-    bound_tol: float = 0.05
-    max_bits: float = 3.0
-    k_min: int = 5
-
-
+# Policy is the real one from guard.policy (loaded from data/policy.example.yaml, owner Hyeseong).
 @dataclass
 class GuardResult:
     action: Literal["pass", "rewrite", "block"]
@@ -210,8 +205,8 @@ def _word_diff(a: str, b: str) -> list[dict]:
 
 
 # --- the graph ---------------------------------------------------------------------------------
-def _build_graph(guard, search, client):
-    """Compile-ready graph with the guard / search / model client bound into the nodes."""
+def _build_graph(guard, search, client, policy):
+    """Compile-ready graph with the guard / search / model client / policy bound into the nodes."""
 
     async def ingest(s):
         get_stream_writer()({"type": "node_entered", "data": {"node": "ingest"}})
@@ -237,7 +232,7 @@ def _build_graph(guard, search, client):
         history = [{"query": r["query"], "hop": r["hop"], "run_id": run_id}
                    for r in s["query_log"]]
         try:
-            res = await guard.check(draft, history, Policy())
+            res = await guard.check(draft, history, policy)
         except Exception as exc:                            # rule 1: any exception == block
             w({"type": "error", "data": {"where": "guard", "message": str(exc),
                                          "fail_closed": True, "dispatched": False}})
@@ -254,10 +249,13 @@ def _build_graph(guard, search, client):
             "leak_types": res.leak_types, "secrets_touched": res.secrets_touched,
             "reasons": res.reasons, "latency_ms": res.latency_ms,
             "block_kind": res.block_kind, "rechecked": res.rechecked}})
+        # On a block the query won't dispatch, so its narrowing was prevented; stamp both the
+        # interval and profile previews "prevented" (INTERFACES §3). Otherwise keep their status.
         for iv in res.intervals:                            # previews, committed:false
-            w({"type": "secret_interval_update", "data": {**iv, "committed": False}})
-        if res.profile:                                     # ProfileProposal carries no status;
-            # a block means the query won't dispatch -> the proposal is prevented, not safe.
+            istatus = "prevented" if res.action == "block" else iv.get("status", "safe")
+            w({"type": "secret_interval_update",
+               "data": {**iv, "status": istatus, "committed": False}})
+        if res.profile:                                     # ProfileProposal carries no status
             pstatus = "prevented" if res.action == "block" else res.profile.get("status", "safe")
             w({"type": "profile_update",
                "data": {**res.profile, "status": pstatus, "committed": False}})
@@ -374,9 +372,9 @@ class _Sequencer:
 
 
 async def stream(task: str, condition: str, *, guard=None, search=None, client=None,
-                 run_id: str | None = None, group_id: str | None = None,
-                 lanes: list[str] | None = None, sequencer: _Sequencer | None = None,
-                 emit_hello: bool = True) -> AsyncIterator:
+                 policy: Policy | None = None, run_id: str | None = None,
+                 group_id: str | None = None, lanes: list[str] | None = None,
+                 sequencer: _Sequencer | None = None, emit_hello: bool = True) -> AsyncIterator:
     """Drive one lane and yield contract-valid ``moat.v2`` events as they happen.
 
     ``sequencer``/``lanes``/``emit_hello`` let a group owner (``stream_group``) coordinate the
@@ -385,6 +383,7 @@ async def stream(task: str, condition: str, *, guard=None, search=None, client=N
     guard = guard if guard is not None else StubGuard()
     search = search if search is not None else _stub_search
     client = client if client is not None else LLMClient()       # defaults to the real client
+    policy = policy if policy is not None else load_policy(_DEFAULT_POLICY)
     run_id = run_id or uuid.uuid4().hex
     group_id = group_id or run_id
     lane = _lane(condition)
@@ -393,7 +392,7 @@ async def stream(task: str, condition: str, *, guard=None, search=None, client=N
     replay = getattr(client, "mode", None) == "replay"
     model = getattr(client, "model", "muse-spark-1.3")
 
-    compiled = _build_graph(guard, search, client).compile(checkpointer=InMemorySaver())
+    compiled = _build_graph(guard, search, client, policy).compile(checkpointer=InMemorySaver())
     config = {"configurable": {"thread_id": run_id},
               "recursion_limit": 4 * MAX_HOPS * (MAX_REDRAFTS + 2)}        # rule 7, 8
 
@@ -405,8 +404,9 @@ async def stream(task: str, condition: str, *, guard=None, search=None, client=N
 
     if emit_hello:
         yield emit("hello", {"group_id": group_id}, hop=None, scoped=True)
-    yield emit("run_started", {"task_id": task, "condition": condition, "tau": Policy().tau,
-                               "model": model, "policy_hash": "stub-policy", "replay": replay,
+    # none/prompt lanes never call the guard, but still record the policy hash for the run.
+    yield emit("run_started", {"task_id": task, "condition": condition, "tau": policy.tau,
+                               "model": model, "policy_hash": policy_hash(policy), "replay": replay,
                                "lanes": announced}, hop=0, scoped=False)
 
     current_hop = 0
@@ -455,7 +455,8 @@ async def stream(task: str, condition: str, *, guard=None, search=None, client=N
 
 
 async def stream_group(task: str, conditions: list[str], *, guard=None, search=None,
-                       client=None, group_id: str | None = None) -> AsyncIterator:
+                       client=None, policy: Policy | None = None,
+                       group_id: str | None = None) -> AsyncIterator:
     """Drive several lanes under one group owner: shared seq allocator + announced-lane list."""
     group_id = group_id or uuid.uuid4().hex
     lanes = [_lane(c) for c in conditions]
@@ -463,7 +464,8 @@ async def stream_group(task: str, conditions: list[str], *, guard=None, search=N
     yield make_event("hello", group_id, {"group_id": group_id})            # one hello per group
     for cond in conditions:
         async for e in stream(task, cond, guard=guard, search=search, client=client,
-                              group_id=group_id, lanes=lanes, sequencer=seqr, emit_hello=False):
+                              policy=policy, group_id=group_id, lanes=lanes, sequencer=seqr,
+                              emit_hello=False):
             yield e
 
 
@@ -498,10 +500,14 @@ class FakeClient:
     # shortcut: canned responses; swap for a recorded replay fixture once A7 records golden runs.
     """
 
-    def __init__(self, *, reflect_answer: str = "DONE") -> None:
-        self.model, self.mode, self.reflect_answer = "muse-spark-1.3", "fake", reflect_answer
+    def __init__(self, *, reflect_answer: str = "DONE", draft: str | None = None) -> None:
+        self.model, self.mode = "muse-spark-1.3", "fake"
+        self.reflect_answer, self.draft = reflect_answer, draft
 
     async def complete(self, **kwargs):
+        text = " ".join(m["content"] for m in kwargs["messages"]).lower()
+        if self.draft is not None and "search query" in text:
+            return _chat_completion(self.draft)
         return _chat_completion(_canned_text(kwargs["messages"], self.reflect_answer))
 
 
@@ -534,11 +540,11 @@ def write_demo_fixture(path: str | Path = _DEFAULT_FIXTURE, *, task: str = "demo
 
 
 # --- CLI ---------------------------------------------------------------------------------------
-async def _run_to_file(task: str, condition: str, client, out: Path) -> list:
+async def _run_to_file(task: str, condition: str, client, policy: Policy, out: Path) -> list:
     out.parent.mkdir(parents=True, exist_ok=True)
     events = []
     with out.open("w", encoding="utf-8") as fh:                 # incremental: survives a crash
-        async for evt in stream(task, condition, client=client):
+        async for evt in stream(task, condition, client=client, policy=policy):
             fh.write(evt.model_dump_json(by_alias=True) + "\n")
             fh.flush()
             events.append(evt)
@@ -551,6 +557,7 @@ def _main(argv=None) -> int:
     p.add_argument("--condition", default="moat",
                    choices=["none", "prompt", "moat", "moat_prompt"])
     p.add_argument("--out", default="runs/dev/run.jsonl")
+    p.add_argument("--policy", default=str(_DEFAULT_POLICY), help="disclosure policy YAML")
     p.add_argument("--llm", choices=["real", "fake"], default="real",
                    help="real = LLMClient (LLM_MODE from env, replay by default); fake = canned")
     p.add_argument("--fixture", default=str(_DEFAULT_FIXTURE),
@@ -564,8 +571,9 @@ def _main(argv=None) -> int:
         return 0
 
     client = FakeClient() if args.llm == "fake" else LLMClient(record_path=args.fixture)
+    policy = load_policy(args.policy)
     out = Path(args.out)
-    events = asyncio.run(_run_to_file(args.task, args.condition, client, out))
+    events = asyncio.run(_run_to_file(args.task, args.condition, client, policy, out))
     check_stream(events, str(out))                              # fail loud if the stream is invalid
     last = events[-1].data
     print(f"OK  {out}: {len(events)} events, status={last.status}, hops={last.hops}, "
