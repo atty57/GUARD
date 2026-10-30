@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DecisionRow, Query } from '@/components/DecisionRow'
 import { LeakMeter } from '@/components/LeakMeter'
+import { ProductProfile } from '@/components/ProductProfile'
 
 const REPLAY_URL = '/api/replay/compare_run/stream'
 
@@ -91,6 +92,7 @@ function LanePanel({ title, lane, priors }: { title: string; lane: LaneView; pri
       </div>
 
       {lane.started && <LeakMeter lane={lane} priors={priors} />}
+      {lane.profile && <ProductProfile profile={lane.profile} />}
 
       {lane.hops.length === 0 && (
         <p className="text-sm text-muted-foreground">Press “Replay compare run” to start.</p>
