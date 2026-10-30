@@ -1,0 +1,29 @@
+[project]
+name = "moat-guard"
+version = "0.1.0"
+description = "MOAT Guard — a privacy guard for deep-research agents."
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "fastapi>=0.135",
+    "uvicorn>=0.30",
+    "openai>=1.54",
+    "langgraph>=1.1",
+]
+
+# No [build-system]: this is a uv "virtual" project. uv manages the venv and installs the
+# dependencies, but does not try to build/package agent/, guard/, api/. Modules are imported
+# as namespace packages from the repo root (e.g. `uv run python -m agent.llm`).
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["."]
+testpaths = ["agent/tests"]
