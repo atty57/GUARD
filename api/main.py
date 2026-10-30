@@ -36,6 +36,28 @@ async def replay_stream(path: Path, delay: float):
         await asyncio.sleep(delay)
 
 
+def lanes_in(path: Path) -> list[str]:
+    """Which lanes a recorded run contains, read from its run_started events."""
+    lanes: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        if event.get("type") == "run_started":
+            for lane in event["data"]["lanes"]:
+                if lane not in lanes:
+                    lanes.append(lane)
+    return lanes
+
+
+@app.get("/api/replay")
+def list_replays():
+    """Recorded runs the UI can replay, with their lanes, so the UI can lay out columns
+    before the stream starts."""
+    return {"runs": [{"name": p.stem, "lanes": lanes_in(p)}
+                     for p in sorted(FIXTURES_DIR.glob("*.jsonl"))]}
+
+
 @app.get("/api/replay/{name}/stream")
 def replay(name: str, delay: float = 0.6):
     # Only allow names of files that actually exist in runs/fixtures/.
