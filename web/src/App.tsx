@@ -3,8 +3,8 @@ import { EVENT_TYPES, type Lane, type RunEvent } from './types'
 import { buildLanes, priorsByDim, type HopView, type LaneView } from '@/lib/runState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DecisionRow, Query } from '@/components/DecisionRow'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { HopCard } from '@/components/HopCard'
 import { LeakMeter } from '@/components/LeakMeter'
 import { ProductProfile } from '@/components/ProductProfile'
 import { RunSummary } from '@/components/RunSummary'
@@ -226,24 +226,6 @@ function ReportSlot({ lane }: { lane: LaneView }) {
     <Card size="sm">
       <CardHeader><CardTitle>Final report</CardTitle></CardHeader>
       <CardContent>{lane.report}</CardContent>
-    </Card>
-  )
-}
-
-function HopCard({ hop }: { hop: HopView }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Hop {hop.hop}</CardTitle>
-        {hop.subgoal && <CardDescription>{hop.subgoal}</CardDescription>}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {hop.decisions.map((d, i) => <DecisionRow key={i} decision={d} />)}
-        {hop.decisions.length === 0 && hop.drafts.map((draft, i) => (
-          <Query key={i} label="Drafted" text={draft} />
-        ))}
-        {hop.skipped && <Badge variant="destructive">Hop skipped: {hop.skipped.reason}</Badge>}
-      </CardContent>
     </Card>
   )
 }

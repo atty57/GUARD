@@ -14,6 +14,8 @@ function level(guess: Range, prior: Range) {
 }
 
 const pretty = (dim: string) => dim.replace(/_/g, ' ')
+// "372–372" reads oddly; a one-point range is just "372".
+const span = (r: Range) => (r[0] === r[1] ? `${r[0]}` : `${r[0]}–${r[1]}`)
 
 export function LeakMeter({ lane, priors }: { lane: LaneView; priors: Record<string, PriorInfo> }) {
   const intervals = lane.hops.flatMap((h) => h.intervals)
@@ -36,7 +38,7 @@ export function LeakMeter({ lane, priors }: { lane: LaneView; priors: Record<str
         {[...guesses].map(([dim, guess]) => {
           const info = priors[dim]
           if (!info) {
-            return <p key={dim} className="text-sm">{pretty(dim)}: {guess[0]}–{guess[1]}</p>
+            return <p key={dim} className="text-sm">{pretty(dim)}: {span(guess)}</p>
           }
           const { prior, unit } = info
           const pct = (v: number) => Math.min(100, Math.max(0, ((v - prior[0]) / (prior[1] - prior[0])) * 100))
@@ -53,7 +55,7 @@ export function LeakMeter({ lane, priors }: { lane: LaneView; priors: Record<str
               <div className="relative h-4 rounded-full bg-muted" role="img"
                    aria-label={`Attacker's guess ${guess[0]} to ${guess[1]} ${unit}, out of ${prior[0]} to ${prior[1]}`}>
                 {stopped.map((p, i) => (
-                  <div key={i} title={`MOAT prevented ${p.after[0]}–${p.after[1]} ${unit}`}
+                  <div key={i} title={`MOAT prevented ${span(p.after)} ${unit}`}
                        className="absolute inset-y-0 rounded-full border border-dashed border-red-400/80"
                        style={{ left: `${pct(p.after[0])}%`, width: `${pct(p.after[1]) - pct(p.after[0])}%` }} />
                 ))}
@@ -63,13 +65,13 @@ export function LeakMeter({ lane, priors }: { lane: LaneView; priors: Record<str
 
               <div className="flex justify-between font-mono text-xs text-muted-foreground tabular-nums">
                 <span>{prior[0]}</span>
-                <span className="text-foreground">guess: {guess[0]}–{guess[1]} {unit}</span>
+                <span className="text-foreground">guess: {span(guess)} {unit}</span>
                 <span>{prior[1]}</span>
               </div>
 
               {stopped.map((p, i) => (
                 <p key={i} className="text-xs text-red-400">
-                  MOAT prevented this from narrowing to {p.after[0]}–{p.after[1]} {unit}
+                  MOAT prevented this from narrowing to {span(p.after)} {unit}
                 </p>
               ))}
             </div>

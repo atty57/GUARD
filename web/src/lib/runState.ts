@@ -14,7 +14,7 @@ export type HopView = {
   search?: SearchResultsEvent['data']
   skipped?: { reason: string; detail: string }
   errors: { where: string; message: string; dispatched: boolean }[]
-  injections: { doc_id: string; action: string }[]
+  injections: { doc_id: string; pattern: string; action: string }[]
 }
 
 export type LaneView = {
