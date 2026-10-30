@@ -5,7 +5,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': 'http://localhost:8000',
+      // 127.0.0.1, not localhost: avoids slow/failed IPv6 lookups that can stall SSE (PLAN.md §11)
+      '/api': 'http://127.0.0.1:8000',
     },
   },
 })

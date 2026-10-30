@@ -42,4 +42,9 @@ def replay(name: str, delay: float = 0.6):
     available = {p.stem: p for p in FIXTURES_DIR.glob("*.jsonl")}
     if name not in available:
         raise HTTPException(status_code=404, detail=f"No recorded run named {name!r}")
-    return StreamingResponse(replay_stream(available[name], delay), media_type="text/event-stream")
+    return StreamingResponse(
+        replay_stream(available[name], delay),
+        media_type="text/event-stream",
+        # Tell browsers/proxies not to cache or buffer the stream (PLAN.md §11 SSE gotchas).
+        headers={"Cache-Control": "no-cache"},
+    )
