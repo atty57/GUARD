@@ -17,14 +17,20 @@ The six tests the task named, in order:
 
 from __future__ import annotations
 
-from agent.events import make_event
+import json
+from pathlib import Path
+
+from agent.events import check_stream, make_event
 from agent.graph import (
     MAX_HOPS,
     FakeClient,
+    GuardResult,
     ResearchState,
     StubGuard,
     collect,
+    stream_group,
 )
+from agent.llm import ReplayMiss
 
 
 def _by_type(events, type_):
@@ -101,3 +107,115 @@ async def test_every_event_revalidates_with_make_event():
         data = e.data.model_dump(by_alias=True)
         # Rebuilding from the envelope + data must not raise: the stream is contract-valid.
         make_event(e.type, e.group_id, data, run_id=e.run_id, lane=e.lane, seq=e.seq, hop=e.hop)
+
+
+# --- Codex-finding regression tests (one per bug) ---------------------------------------------
+class _BlockThenPass:
+    """Guard that blocks its first ``n`` calls, then passes — for the redraft-cap test."""
+
+    def __init__(self, n: int) -> None:
+        self.n, self.calls = n, 0
+
+    async def check(self, draft, history, policy):
+        self.calls += 1
+        if self.calls <= self.n:
+            return GuardResult(action="block", query=None, block_kind="redraftable")
+        return GuardResult(action="pass", query=draft)
+
+
+class _HistorySpy:
+    """Pass-through guard that records the history it was handed on each call."""
+
+    def __init__(self) -> None:
+        self.histories: list[list[dict]] = []
+
+    async def check(self, draft, history, policy):
+        self.histories.append([dict(h) for h in history])
+        return GuardResult(action="pass", query=draft)
+
+
+# F1: a model failure after this hop already searched is NOT a block (dispatched preserved).
+async def test_model_failure_after_search_keeps_dispatched():
+    class _FailOnReflect(FakeClient):
+        async def complete(self, **kwargs):
+            if "reflect" in " ".join(m["content"] for m in kwargs["messages"]).lower():
+                raise ReplayMiss("no recording for reflect")
+            return await super().complete(**kwargs)
+
+    events = await collect("demo", "none", guard=StubGuard(), client=_FailOnReflect())
+
+    assert _by_type(events, "search_results"), "hop 1 must have dispatched before the failure"
+    err = _by_type(events, "error")[0]
+    assert err.data.where == "model" and err.data.dispatched is True   # not rendered as BLOCKED
+    assert events[-1].data.status == "failed" and events[-1].data.sent == 1
+    check_stream(events, "model-failure")
+
+
+# F2: a malformed hit (projection failure) must not drop the already-dispatched accounting.
+async def test_malformed_hit_retains_dispatch_accounting():
+    def _bad_search(query, k=5):
+        return [{"title": "t", "score": 1.0}]          # missing "id" -> projection raises
+
+    events = await collect("demo", "none", search=_bad_search, client=FakeClient())
+
+    err = _by_type(events, "error")[0]
+    assert err.data.where == "search" and err.data.dispatched is True
+    assert events[-1].data.sent == 1 and events[-1].data.hops == 1
+    check_stream(events, "malformed-hit")
+
+
+# F3: a profile proposal (which carries no status) must be given one in preview and commit.
+async def test_profile_proposal_gets_status():
+    prof = {"revealed": {"cathode": "NCM811"}, "k": 3, "k_min": 5}      # no status field
+    guard = StubGuard(mode="rewrite", profile=prof)
+    events = await collect("demo", "moat", guard=guard, client=FakeClient())
+
+    profiles = _by_type(events, "profile_update")
+    assert profiles, "a profile proposal must surface as profile_update events"
+    assert all(p.data.status for p in profiles)
+    assert events[-1].data.status == "completed"
+    check_stream(events, "profile-status")
+
+
+# F4: MAX_REDRAFTS=2 must permit a third attempt (initial + 2 redrafts).
+async def test_redraft_cap_allows_third_attempt():
+    guard = _BlockThenPass(2)                          # block twice, pass the third check
+    events = await collect("demo", "moat", guard=guard, client=FakeClient())
+
+    assert guard.calls == 3, "the guard's third check must be reached"
+    assert len(_by_type(events, "search_results")) == 1, "the third, passing draft dispatches"
+    assert _by_type(events, "hop_skipped") == []
+
+
+# F5: LLM recordings must not sit in runs/fixtures/, which the event checker loads as moat.v2.
+def test_event_fixture_dir_holds_only_moat_events():
+    fixtures = Path(__file__).resolve().parent.parent.parent / "runs" / "fixtures"
+    for path in fixtures.glob("*.jsonl"):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                assert json.loads(line).get("schema") == "moat.v2", \
+                    f"{path.name} is not a moat.v2 event fixture"
+
+
+# F6: two lanes sharing a group need one seq allocator and one announced-lane list.
+async def test_group_stream_shares_sequence_and_lanes():
+    events = [e async for e in stream_group("demo", ["none", "moat"],
+                                            guard=StubGuard(), client=FakeClient())]
+
+    check_stream(events, "group")                      # group-wide seq + lane-announcement
+    started = _by_type(events, "run_started")
+    assert {e.lane for e in started} == {"baseline", "moat"}
+    assert all(set(e.data.lanes) == {"baseline", "moat"} for e in started)
+    seqs = [e.seq for e in events if e.seq is not None]
+    assert seqs == sorted(set(seqs)), "seq must be group-stable and strictly increasing"
+
+
+# F7: the guard receives each sent query's real provenance (hop + run_id), not hop:0/run_id:"".
+async def test_guard_history_carries_real_provenance():
+    spy = _HistorySpy()
+    await collect("demo", "moat", guard=spy, client=FakeClient(reflect_answer="CONTINUE"),
+                  run_id="run-xyz")
+
+    assert len(spy.histories) >= 2, "need a second hop to inspect the history"
+    first_sent = spy.histories[1][0]                   # the query dispatched on hop 1
+    assert first_sent["hop"] == 1 and first_sent["run_id"] == "run-xyz"

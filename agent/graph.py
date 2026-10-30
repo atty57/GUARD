@@ -45,7 +45,9 @@ from agent.events import Condition, check_stream, make_event
 from agent.llm import LLMClient
 
 MAX_HOPS, MAX_REDRAFTS = 6, 2
-_DEFAULT_FIXTURE = Path(__file__).resolve().parent.parent / "runs" / "fixtures" / "llm_demo.jsonl"
+# LLM recordings are {key,request,response} — NOT moat.v2 events — so they must live outside
+# runs/fixtures/, which `python -m agent.events` loads wholesale as the event contract.
+_DEFAULT_FIXTURE = Path(__file__).resolve().parent.parent / "runs" / "recordings" / "llm_demo.jsonl"
 
 # TODO(A3): replace with the MosaicLeaks paper's exact privacy note (HANDOFF §10).
 PRIVACY_NOTE = (
@@ -183,8 +185,8 @@ def route_after_guard(s: dict) -> str:
         return "web_search"
     if s["guard_errored"] or s["block_kind"] == "unsatisfiable":
         return "skip_hop"                                   # fail closed, no wasted redrafts
-    if s["redrafts_this_hop"] < MAX_REDRAFTS:
-        return "draft_query"
+    if s["redrafts_this_hop"] <= MAX_REDRAFTS:              # the initial block is not a redraft;
+        return "draft_query"                                # allow MAX_REDRAFTS further attempts
     return "skip_hop"                                       # fail closed at the redraft cap
 
 
@@ -225,11 +227,15 @@ def _build_graph(guard, search, client):
         w({"type": "query_drafted", "data": {"draft": draft, "latency_ms": {"total": 0.0}}})
         return {"draft_query": draft}
 
-    async def moat_guard(s):
+    async def moat_guard(s, config):
         w = get_stream_writer()
         w({"type": "node_entered", "data": {"node": "moat_guard"}})
         draft = s["draft_query"]
-        history = [{"query": q, "hop": 0, "run_id": ""} for q in s["sent_queries"]]
+        # Real provenance for each dispatched query (SentQuery contract, INTERFACES §1):
+        # the hop it was sent on (from query_log) and this run's id (thread_id == run_id).
+        run_id = config["configurable"]["thread_id"]
+        history = [{"query": r["query"], "hop": r["hop"], "run_id": run_id}
+                   for r in s["query_log"]]
         try:
             res = await guard.check(draft, history, Policy())
         except Exception as exc:                            # rule 1: any exception == block
@@ -250,8 +256,9 @@ def _build_graph(guard, search, client):
             "block_kind": res.block_kind, "rechecked": res.rechecked}})
         for iv in res.intervals:                            # previews, committed:false
             w({"type": "secret_interval_update", "data": {**iv, "committed": False}})
-        if res.profile:
-            w({"type": "profile_update", "data": {**res.profile, "committed": False}})
+        if res.profile:                                     # ProfileProposal carries no status
+            w({"type": "profile_update",
+               "data": {"status": "safe", **res.profile, "committed": False}})
 
         if res.action in ("pass", "rewrite"):
             upd = {"guard_decision": res.action, "approved_query": res.query,
@@ -287,19 +294,21 @@ def _build_graph(guard, search, client):
         for iv in pc.get("intervals", []):                  # commit at dispatch (INTERFACES §2)
             w({"type": "secret_interval_update", "data": {**iv, "committed": True}})
         if pc.get("profile"):
-            w({"type": "profile_update", "data": {**pc["profile"], "committed": True}})
+            w({"type": "profile_update",
+               "data": {"status": "safe", **pc["profile"], "committed": True}})
         base = {"sent_queries": [q], "query_log": [{"hop": s["search_hops"] + 1, "query": q}],
                 "search_hops": s["search_hops"] + 1, "redrafts_this_hop": 0,
                 "approved_query": None, "pending_commit": None, "guard_decision": None}
-        try:
-            hits = search(q, k=5)
+        try:                                                # projection is inside the handler:
+            hits = search(q, k=5)                           # a malformed hit must not drop the
+            projected = [{"id": h["id"], "title": h["title"],  # already-dispatched accounting
+                          "score": h["score"]} for h in hits]
         except Exception as exc:                            # dispatched: the query already left
             w({"type": "error", "data": {"where": "search", "message": str(exc),
                                          "fail_closed": True, "dispatched": True}})
             return base
         w({"type": "search_results", "data": {
-            "query": q, "corpus": "patents-stub", "corpus_sha": "stub",
-            "hits": [{"id": h["id"], "title": h["title"], "score": h["score"]} for h in hits]}})
+            "query": q, "corpus": "patents-stub", "corpus_sha": "stub", "hits": projected}})
         return {**base, "results": hits}
 
     async def skip_hop(s):
@@ -349,15 +358,35 @@ def _lane(condition: str) -> str:
     return "moat" if condition in ("moat", "moat_prompt") else "baseline"
 
 
+class _Sequencer:
+    """Group-wide ``seq`` allocator; shared across the lanes of one compare group."""
+
+    def __init__(self) -> None:
+        self.n = 0
+
+    def next(self) -> int:
+        v = self.n
+        self.n += 1
+        return v
+
+
 async def stream(task: str, condition: str, *, guard=None, search=None, client=None,
-                 run_id: str | None = None, group_id: str | None = None) -> AsyncIterator:
-    """Drive one lane and yield contract-valid ``moat.v2`` events as they happen."""
+                 run_id: str | None = None, group_id: str | None = None,
+                 lanes: list[str] | None = None, sequencer: _Sequencer | None = None,
+                 emit_hello: bool = True) -> AsyncIterator:
+    """Drive one lane and yield contract-valid ``moat.v2`` events as they happen.
+
+    ``sequencer``/``lanes``/``emit_hello`` let a group owner (``stream_group``) coordinate the
+    lanes of one compare group: one shared seq allocator and one shared announced-lane list.
+    """
     guard = guard if guard is not None else StubGuard()
     search = search if search is not None else _stub_search
     client = client if client is not None else LLMClient()       # defaults to the real client
     run_id = run_id or uuid.uuid4().hex
     group_id = group_id or run_id
     lane = _lane(condition)
+    announced = lanes or [lane]
+    seqr = sequencer or _Sequencer()
     replay = getattr(client, "mode", None) == "replay"
     model = getattr(client, "model", "muse-spark-1.3")
 
@@ -365,23 +394,21 @@ async def stream(task: str, condition: str, *, guard=None, search=None, client=N
     config = {"configurable": {"thread_id": run_id},
               "recursion_limit": 4 * MAX_HOPS * (MAX_REDRAFTS + 2)}        # rule 7, 8
 
-    seq = 0
-
     def emit(type_: str, data: dict, *, hop: int | None, scoped: bool):
-        nonlocal seq
         if scoped:
             return make_event(type_, group_id, data)                       # hello: unscoped
-        evt = make_event(type_, group_id, data, run_id=run_id, lane=lane, seq=seq, hop=hop)
-        seq += 1
-        return evt
+        return make_event(type_, group_id, data, run_id=run_id, lane=lane,
+                          seq=seqr.next(), hop=hop)
 
-    yield emit("hello", {"group_id": group_id}, hop=None, scoped=True)
+    if emit_hello:
+        yield emit("hello", {"group_id": group_id}, hop=None, scoped=True)
     yield emit("run_started", {"task_id": task, "condition": condition, "tau": Policy().tau,
                                "model": model, "policy_hash": "stub-policy", "replay": replay,
-                               "lanes": [lane]}, hop=0, scoped=False)
+                               "lanes": announced}, hop=0, scoped=False)
 
     current_hop = 0
     last_decision_seq: dict[int, int] = {}
+    dispatched_hops: set[int] = set()
     saw_skip = False
 
     async def final_counts():
@@ -399,16 +426,20 @@ async def stream(task: str, condition: str, *, guard=None, search=None, client=N
                 data["hop"] = current_hop
             if type_ == "hop_skipped":
                 saw_skip = True
+            if type_ == "search_results" or (type_ == "error" and data.get("dispatched")):
+                dispatched_hops.add(current_hop)
             if type_ == "secret_interval_update":
-                data["decision_seq"] = last_decision_seq.get(current_hop, seq)
+                data["decision_seq"] = last_decision_seq.get(current_hop, seqr.n)
             evt = emit(type_, data, hop=current_hop, scoped=False)
             if type_ == "guard_decision":
                 last_decision_seq[current_hop] = evt.seq
             yield evt
     except Exception as exc:                                               # rule 1 / fail closed
         where = "model" if type(exc).__name__ in ("ReplayMiss", "BudgetExceeded") else "graph"
+        # Preserve dispatch status: a failure after this hop already searched is not a block.
         yield emit("error", {"where": where, "message": str(exc), "fail_closed": True,
-                             "dispatched": False}, hop=current_hop, scoped=False)
+                             "dispatched": current_hop in dispatched_hops},
+                   hop=current_hop, scoped=False)
         c = await final_counts()
         yield emit("run_complete", {"status": "failed", "trace_url": None, **c},
                    hop=current_hop, scoped=False)
@@ -418,6 +449,19 @@ async def stream(task: str, condition: str, *, guard=None, search=None, client=N
     status = "completed_with_skips" if saw_skip else "completed"
     yield emit("run_complete", {"status": status, "trace_url": None, **c},
                hop=current_hop, scoped=False)
+
+
+async def stream_group(task: str, conditions: list[str], *, guard=None, search=None,
+                       client=None, group_id: str | None = None) -> AsyncIterator:
+    """Drive several lanes under one group owner: shared seq allocator + announced-lane list."""
+    group_id = group_id or uuid.uuid4().hex
+    lanes = [_lane(c) for c in conditions]
+    seqr = _Sequencer()
+    yield make_event("hello", group_id, {"group_id": group_id})            # one hello per group
+    for cond in conditions:
+        async for e in stream(task, cond, guard=guard, search=search, client=client,
+                              group_id=group_id, lanes=lanes, sequencer=seqr, emit_hello=False):
+            yield e
 
 
 async def collect(task: str, condition: str, **kw) -> list:
