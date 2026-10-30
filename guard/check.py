@@ -27,7 +27,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from guard import ledger
+from guard import ledger, profile
 from guard.policy import Policy, SecretSpec
 from guard.quantities import Quantity, extract_quantities, family, to_canonical, unit_id
 
@@ -192,13 +192,27 @@ async def check(draft: str, history: list[SentQuery] | list[dict], policy: Polic
                            latency_ms=latency)
 
     findings, leak_types, touched, reasons = tier1(draft, sent, policy)
+    pf = None
+    if policy.profile_catalog:
+        pf = profile.assess(profile.load_catalog(policy.profile_catalog), draft, sent, policy.k_min)
     t2 = time.perf_counter()
     latency["tier1"] = round((t2 - t1) * 1000, 3)
     latency["total"] = round((t2 - t0) * 1000, 3)
-    if touched:
-        return GuardResult(action="block", query=None, tier=1, block_kind="redraftable",
+
+    kind = "redraftable"
+    if pf is not None and pf.violates:
+        leak_types.append("intent_profile")
+        terms = ", ".join(repr(t) for t in pf.new_terms)
+        reasons.append(f"profile: with {terms}, only {pf.k_after} candidate product(s) fit "
+                       f"what has been sent (k_min {pf.k_min})")
+        if not pf.satisfiable and not touched:
+            kind = "unsatisfiable"   # already under k_min: no redraft can add detail safely
+    prof = profile.proposal(pf) if pf is not None else None
+
+    if touched or (pf is not None and pf.violates):
+        return GuardResult(action="block", query=None, tier=1, block_kind=kind,
                            leak_types=leak_types, secrets_touched=touched, reasons=reasons,
-                           latency_ms=latency,
+                           latency_ms=latency, profile=prof,
                            intervals=[ledger.proposal(policy, f, "original") for f in findings])
-    return GuardResult(action="pass", query=draft, tier=0, latency_ms=latency,
+    return GuardResult(action="pass", query=draft, tier=0, latency_ms=latency, profile=prof,
                        intervals=[ledger.proposal(policy, f, "final") for f in findings])

@@ -1,0 +1,72 @@
+# Candidate products an outside observer could confuse with ours: the "crowd" for the profile
+# check (k-anonymity, guard/profile.py). All makers and products are fictional.
+#
+# k = how many products below still fit every attribute the sent queries have revealed.
+# If a draft would push k under the policy's k_min while our own product (`target`) still fits,
+# the guard blocks it. A query that rules our product out ("LFP cells ...") reveals nothing
+# about it, however small the crowd gets.
+#
+# Dev split only (Halden HX-9 + 15 others). Test-split companies get their own catalog, kept
+# out of the repo with the rest of the test split.
+
+attributes:
+  # term (as it appears in a query) -> catalog values it covers. Broader terms cover more.
+  cathode:
+    "NCM811": [NCM811]
+    "NCM 811": [NCM811]
+    "NCM88": [NCM88]
+    "NCM 88": [NCM88]
+    "high-nickel": [NCM811, NCM88, NCA]
+    "high nickel": [NCM811, NCM88, NCA]
+    "Ni-rich": [NCM811, NCM88, NCA]
+    "nickel-rich": [NCM811, NCM88, NCA]
+    "NCA": [NCA]
+    "NCM622": [NCM622]
+    "LFP": [LFP]
+    "LMFP": [LMFP]
+  format:
+    "pouch": [pouch]
+    "cylindrical": [cylindrical]
+    "prismatic": [prismatic]
+  anode:
+    "silicon anode": [Si-graphite]
+    "Si anode": [Si-graphite]
+    "Si-graphite": [Si-graphite]
+    "silicon-graphite": [Si-graphite]
+    "silicon-carbon": [Si-graphite]
+  region:
+    "Europe": [Europe]
+    "European": [Europe]
+    "EU": [Europe]
+    "North America": [NA]
+    "North American": [NA]
+    "Korean": [Korea]
+    "Chinese": [China]
+  sop_year:
+    "SOP 2026": ["2026"]
+    "SOP 2027": ["2027"]
+    "SOP 2028": ["2028"]
+
+# A region term only counts as the product's market when the query is about customers or
+# supply ("OEM", "supplier", ...); "Korea national core technology list" names a law, not a market.
+region_context: "\\b(OEMs?|suppliers?|platforms?|markets?|customers?|automakers?|carmakers?)\\b"
+
+target: HX-9
+
+products:
+  - {id: HX-9, maker: Halden Cells,    cathode: NCM88,  format: pouch,       anode: Si-graphite, region: Europe, sop_year: "2027"}
+  - {id: A7,   maker: Arvik Energy,    cathode: NCM811, format: pouch,       anode: graphite,    region: Europe, sop_year: "2026"}
+  - {id: P3,   maker: Brenner Power,   cathode: NCM811, format: pouch,       anode: Si-graphite, region: Europe, sop_year: "2028"}
+  - {id: CX,   maker: Calder Batteries, cathode: NCA,   format: cylindrical, anode: Si-graphite, region: NA,     sop_year: "2027"}
+  - {id: D5,   maker: Dovre Cell,      cathode: NCM88,  format: prismatic,   anode: graphite,    region: Europe, sop_year: "2027"}
+  - {id: E2,   maker: Elmstead Energy, cathode: NCM811, format: pouch,       anode: graphite,    region: Korea,  sop_year: "2027"}
+  - {id: F1,   maker: Fjell Battery,   cathode: NCM622, format: pouch,       anode: graphite,    region: Europe, sop_year: "2025"}
+  - {id: G8,   maker: Gorlitz Zellen,  cathode: NCM88,  format: pouch,       anode: graphite,    region: Europe, sop_year: "2028"}
+  - {id: H4,   maker: Hollin Power,    cathode: LFP,    format: prismatic,   anode: graphite,    region: China,  sop_year: "2026"}
+  - {id: I3,   maker: Iversen Cells,   cathode: NCA,    format: pouch,       anode: Si-graphite, region: Europe, sop_year: "2027"}
+  - {id: J2,   maker: Juno Storage,    cathode: LMFP,   format: prismatic,   anode: graphite,    region: Europe, sop_year: "2027"}
+  - {id: K6,   maker: Kessel Energie,  cathode: NCM811, format: cylindrical, anode: Si-graphite, region: Europe, sop_year: "2027"}
+  - {id: L1,   maker: Lunde Batteries, cathode: NCM811, format: pouch,       anode: graphite,    region: NA,     sop_year: "2028"}
+  - {id: M9,   maker: Marlow Cells,    cathode: NCM88,  format: pouch,       anode: Si-graphite, region: Korea,  sop_year: "2027"}
+  - {id: N2,   maker: Norvik Power,    cathode: NCM811, format: pouch,       anode: graphite,    region: Europe, sop_year: "2027"}
+  - {id: O5,   maker: Orrin Cells,     cathode: NCM622, format: prismatic,   anode: graphite,    region: NA,     sop_year: "2026"}

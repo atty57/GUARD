@@ -94,8 +94,9 @@ class Policy(_M):
     # global cap on information an observer may gain about one secret, in bits
     max_bits: float = Field(default=3.0, gt=0)
     # product-profile k-anonymity: at least k candidate products must fit what has gone out.
-    # Used by the profile check in the ledger (10/30).
     k_min: int = Field(default=5, ge=1)
+    # candidate-product catalog for the profile check (guard/profile.py); None turns it off
+    profile_catalog: str | None = None
     secrets: list[SecretSpec]
 
     @model_validator(mode="after")
