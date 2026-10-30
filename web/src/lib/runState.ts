@@ -66,3 +66,16 @@ export function buildLanes(events: RunEvent[]): Record<Lane, LaneView> {
   }
   return lanes
 }
+
+// The full range an informed outsider would assume for each secret, before any queries.
+// Only the MOAT lane carries interval events, so we collect priors from all lanes and
+// share them, letting the baseline lane draw its bar on the same scale.
+export type PriorInfo = { prior: [number, number]; unit: string }
+
+export function priorsByDim(lanes: LaneView[]): Record<string, PriorInfo> {
+  const out: Record<string, PriorInfo> = {}
+  for (const lane of lanes)
+    for (const hop of lane.hops)
+      for (const i of hop.intervals) out[i.dim] ??= { prior: i.prior, unit: i.unit }
+  return out
+}

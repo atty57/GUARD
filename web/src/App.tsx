@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { EVENT_TYPES, type Lane, type RunEvent } from './types'
-import { buildLanes, type HopView, type LaneView } from '@/lib/runState'
+import { buildLanes, priorsByDim, type HopView, type LaneView, type PriorInfo } from '@/lib/runState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DecisionRow, Query } from '@/components/DecisionRow'
+import { LeakMeter } from '@/components/LeakMeter'
 
 const REPLAY_URL = '/api/replay/compare_run/stream'
 
@@ -54,6 +55,7 @@ function App() {
 
   // Recomputed only when events change.
   const lanes = useMemo(() => buildLanes(events), [events])
+  const priors = useMemo(() => priorsByDim([lanes.baseline, lanes.moat]), [lanes])
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -73,14 +75,14 @@ function App() {
       </header>
 
       <main className="grid grid-cols-1 gap-6 p-8 lg:grid-cols-2">
-        <LanePanel title="No guard" lane={lanes.baseline} />
-        <LanePanel title="With MOAT" lane={lanes.moat} />
+        <LanePanel title="No guard" lane={lanes.baseline} priors={priors} />
+        <LanePanel title="With MOAT" lane={lanes.moat} priors={priors} />
       </main>
     </div>
   )
 }
 
-function LanePanel({ title, lane }: { title: string; lane: LaneView }) {
+function LanePanel({ title, lane, priors }: { title: string; lane: LaneView; priors: Record<string, PriorInfo> }) {
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -88,17 +90,13 @@ function LanePanel({ title, lane }: { title: string; lane: LaneView }) {
         {lane.started && <Badge variant="outline">condition: {lane.started.condition}</Badge>}
       </div>
 
+      {lane.started && <LeakMeter lane={lane} priors={priors} />}
+
       {lane.hops.length === 0 && (
         <p className="text-sm text-muted-foreground">Press “Replay compare run” to start.</p>
       )}
 
       {lane.hops.map((hop) => <HopCard key={hop.hop} hop={hop} />)}
-
-      {lane.observer.map((o, i) => (
-        <p key={i} className="text-sm">
-          Attacker guesses <strong>{o.attr}</strong>: {o.p10}–{o.p90}
-        </p>
-      ))}
 
       {lane.report && (
         <Card size="sm">
