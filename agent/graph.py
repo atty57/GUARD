@@ -146,6 +146,17 @@ def _stub_search(query: str, k: int = 5) -> list[dict]:
              "score": round(10.0 - i, 3)} for i in range(k)]
 
 
+def _default_search():
+    """Real A4 corpus search when a built DB is present; the stub otherwise (CI has no DB)."""
+    try:
+        from agent.search import corpus_db_exists, search as real_search
+        if corpus_db_exists():
+            return real_search
+    except Exception:
+        pass
+    return _stub_search
+
+
 # --- prompts (the `prompt` / `moat_prompt` conditions add the privacy note) --------------------
 def _system(condition: str) -> str:
     base = "You are a research agent that drafts web search queries over public patents."
@@ -299,7 +310,9 @@ def _build_graph(guard, search, client, policy):
         base = {"sent_queries": [q], "query_log": [{"hop": s["search_hops"] + 1, "query": q}],
                 "search_hops": s["search_hops"] + 1, "redrafts_this_hop": 0,
                 "approved_query": None, "pending_commit": None, "guard_decision": None}
-        results = {"query": q, "corpus": "patents-stub", "corpus_sha": "stub", "hits": []}
+        cm = getattr(search, "corpus_meta", None)          # real search carries corpus name + sha;
+        meta = cm() if callable(cm) else {"name": "patents-stub", "sha": "stub"}  # stub has neither
+        results = {"query": q, "corpus": meta["name"], "corpus_sha": meta["sha"], "hits": []}
         try:                                                # projection AND validation inside the
             hits = search(q, k=5)                           # handler: a malformed hit or a schema
             results["hits"] = [{"id": h["id"], "title": h["title"],  # error (e.g. NaN score) that
@@ -381,7 +394,7 @@ async def stream(task: str, condition: str, *, guard=None, search=None, client=N
     lanes of one compare group: one shared seq allocator and one shared announced-lane list.
     """
     guard = guard if guard is not None else StubGuard()
-    search = search if search is not None else _stub_search
+    search = search if search is not None else _default_search()
     client = client if client is not None else LLMClient()       # defaults to the real client
     policy = policy if policy is not None else load_policy(_DEFAULT_POLICY)
     run_id = run_id or uuid.uuid4().hex
