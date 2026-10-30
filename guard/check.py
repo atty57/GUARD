@@ -4,16 +4,17 @@ Contract: docs/INTERFACES.md §1.
 
     async def check(draft, history, policy) -> GuardResult
 
-This PR implements **Tier 0**, the value firewall. It blocks a draft that states a secret
-outright:
+Tier 0, the value firewall, blocks a draft that states a secret outright:
 
 - ``exact_value``: the secret's value in its own unit, within tolerance ("270 Wh/kg" vs 272),
   or a listed equivalent form ("NCM 88/06/06").
 - ``unit_change``: the same value in another unit ("0.272 kWh/kg", "1018 K", "720 min").
 - ``identifier``: a name secret or one of its aliases ("Ostrava", "3Q27").
 
-Bounds and ranges ("above 250", "260-280 Wh/kg") are left to the Tier 1 ledger, which needs
-``history``. Tier 2 (LLM rewrite) comes later; until then a Tier 0 hit is a redraftable block.
+Tier 1, the disclosure ledger (guard/ledger.py), blocks bounds and ranges ("above 250",
+"260-280 Wh/kg") that, alone or with the queries already sent, narrow a secret past its policy
+limits (``range`` / ``split``). Tier 2 (LLM rewrite) comes later; until then a hit is a
+redraftable block.
 
 Reasons never contain the secret value: they are shown in the UI and written to run logs.
 """
@@ -26,6 +27,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from guard import ledger
 from guard.policy import Policy, SecretSpec
 from guard.quantities import Quantity, extract_quantities, family, to_canonical, unit_id
 
@@ -82,12 +84,7 @@ class GuardResult(_M):
 
 # A bare percentage says nothing about *which* percentage. For fraction-unit secrets, Tier 0
 # only fires when the query also names the attribute; otherwise "95% confidence" would hit the
-# yield secret. Dims not listed here need no context word.
-_CONTEXT = {
-    "ni_content": r"\bni\b|nickel|\bncm|\bnca\b",
-    "production_yield": r"yield",
-    "al_dopant": r"\bal\b|alumin|dop",
-}
+# yield secret. Shared with the ledger (guard/ledger.py: CONTEXT).
 
 
 def _step(s: SecretSpec, uid: str) -> float:
@@ -107,8 +104,7 @@ def _point_hits(policy: Policy, s: SecretSpec, quantities: list[Quantity], text:
         return
     fam = family(sid)
     secret = to_canonical(float(s.value), sid)
-    ctx = _CONTEXT.get(s.dim)
-    if fam == "fraction" and ctx and not re.search(ctx, text, re.I):
+    if fam == "fraction" and not ledger.applies(s, text):
         return
     tol = _tolerance(policy, s, sid, secret)
     # The legal threshold is public (DATA_SPEC §2): quoting "265 Wh/kg" is not stating our
@@ -153,15 +149,56 @@ def tier0(draft: str, policy: Policy) -> tuple[list[str], list[str], list[str]]:
     return leak_types, touched, reasons
 
 
+def _sent(history: list[SentQuery] | list[dict]) -> list[str]:
+    return [h.query if isinstance(h, SentQuery) else SentQuery.model_validate(h).query
+            for h in history]
+
+
+def tier1(draft: str, sent: list[str], policy: Policy):
+    """Ledger check. Returns (findings, leak_types, touched, reasons) for violations only."""
+    findings = ledger.assess(draft, sent, policy)
+    leak_types: list[str] = []
+    touched: list[str] = []
+    reasons: list[str] = []
+    for f in findings:
+        if not f.violates:
+            continue
+        s = f.secret
+        touched.append(s.secret_id)
+        if f.leak_type not in leak_types:
+            leak_types.append(f.leak_type)
+        if f.threshold_side:
+            why = "reveals which side of the legal threshold it is on"
+        elif f.leak_type == "split":
+            why = "together with earlier queries, narrows it past the policy limit"
+        else:
+            why = "narrows it past the policy limit"
+        reasons.append(f"{s.secret_id} ({s.dim}): this query {why}")
+    return findings, leak_types, touched, reasons
+
+
 async def check(draft: str, history: list[SentQuery] | list[dict], policy: Policy) -> GuardResult:
     """Decide whether ``draft`` may leave. Raises on bad input; the caller treats any
     exception as a block (fail closed)."""
+    sent = _sent(history)
     t0 = time.perf_counter()
     leak_types, touched, reasons = tier0(draft, policy)
-    ms = round((time.perf_counter() - t0) * 1000, 3)
-    latency = {"tier0": ms, "total": ms}
+    t1 = time.perf_counter()
+    latency = {"tier0": round((t1 - t0) * 1000, 3)}
     if touched:
+        latency["total"] = latency["tier0"]
         return GuardResult(action="block", query=None, tier=0, block_kind="redraftable",
                            leak_types=leak_types, secrets_touched=touched, reasons=reasons,
                            latency_ms=latency)
-    return GuardResult(action="pass", query=draft, tier=0, latency_ms=latency)
+
+    findings, leak_types, touched, reasons = tier1(draft, sent, policy)
+    t2 = time.perf_counter()
+    latency["tier1"] = round((t2 - t1) * 1000, 3)
+    latency["total"] = round((t2 - t0) * 1000, 3)
+    if touched:
+        return GuardResult(action="block", query=None, tier=1, block_kind="redraftable",
+                           leak_types=leak_types, secrets_touched=touched, reasons=reasons,
+                           latency_ms=latency,
+                           intervals=[ledger.proposal(policy, f, "original") for f in findings])
+    return GuardResult(action="pass", query=draft, tier=0, latency_ms=latency,
+                       intervals=[ledger.proposal(policy, f, "final") for f in findings])

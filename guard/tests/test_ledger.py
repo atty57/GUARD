@@ -1,0 +1,110 @@
+import asyncio
+from pathlib import Path
+
+import pytest
+
+from agent.events import SecretIntervalUpdateData
+from guard.check import check
+from guard.ledger import assess, narrow
+from guard.policy import Policy, load_policy
+
+EXAMPLE = Path(__file__).resolve().parents[2] / "data" / "policy.example.yaml"
+
+
+@pytest.fixture(scope="module")
+def policy() -> Policy:
+    return load_policy(EXAMPLE)
+
+
+def session(queries: list[str], policy: Policy):
+    """Run queries in order; only passed ones join the history, like the agent graph."""
+    hist, results = [], []
+    for i, q in enumerate(queries, 1):
+        r = asyncio.run(check(q, hist, policy))
+        results.append(r)
+        if r.action != "block":
+            hist.append({"query": r.query, "hop": i, "run_id": "test"})
+    return results
+
+
+# --- split leaks: each query fine alone, blocked once the interval gets too narrow -----------
+SPLIT = [
+    (["EV pouch cell energy density above 250 Wh/kg reviews",
+      "pouch cell energy density below 280 Wh/kg safety"], "S1", [250, 280]),
+    (["calcination above 700 °C cation mixing",
+      "calcination below 770 °C residual lithium"], "S3", [700, 770]),
+    (["Si-graphite anode capacity from 580 mAh/g papers",
+      "Si-graphite anode up to 700 mAh/g cycle life"], "S6", [580, 700]),
+]
+
+
+@pytest.mark.parametrize("queries,sid,after", SPLIT)
+def test_split_leak_blocked_on_the_query_that_crosses(policy, queries, sid, after):
+    first, second = session(queries, policy)
+    assert first.action == "pass"
+    assert [iv["secret_id"] for iv in first.intervals] == [sid]
+    assert first.intervals[0]["basis"] == "final"
+    assert second.action == "block" and second.tier == 1
+    assert second.leak_types == ["split"] and second.secrets_touched == [sid]
+    (iv,) = second.intervals
+    assert iv["after"] == after and iv["basis"] == "original" and iv["status"] == "prevented"
+
+
+# --- a single range or threshold-side bound -------------------------------------------------
+SINGLE = [
+    ("EV pouch cells 260-280 Wh/kg announced 2026", "S1"),
+    ("calcination between 730 and 760 °C high nickel NCM", "S3"),
+    ("export approval cell energy density above 265 Wh/kg", "S1"),   # threshold side
+    ("cathode nickel content over 80% patents firing", "S2"),        # threshold side
+]
+
+
+@pytest.mark.parametrize("draft,sid", SINGLE)
+def test_range_and_threshold_side_blocked(policy, draft, sid):
+    (r,) = session([draft], policy)
+    assert r.action == "block" and r.tier == 1
+    assert r.leak_types == ["range"] and r.secrets_touched == [sid]
+
+
+def test_blocked_query_does_not_narrow_later(policy):
+    # the blocked "below 770" never left, so "at least 730" is judged against [700, 950]
+    r1, r2, r3 = session(["calcination above 700 °C cation mixing",
+                          "calcination below 770 °C residual lithium",
+                          "calcination at least 730 °C Al-doped"], policy)
+    assert (r1.action, r2.action, r3.action) == ("pass", "block", "pass")
+    assert r3.intervals[0]["before"] == [700, 950] and r3.intervals[0]["after"] == [730, 950]
+
+
+def test_fraction_bounds_need_the_attribute_named(policy):
+    # "above 90%" with no attribute word is not about any secret
+    assert assess("models above 90% accuracy", [], policy) == []
+    assert [f.secret.secret_id for f in assess("yield above 90% slot-die", [], policy)] == ["S7"]
+
+
+def test_contradictory_bound_is_ignored(policy):
+    s = policy.secret("S1")
+    assert narrow(s, (250, 280), "below 200 Wh/kg") == (250, 280)
+
+
+def test_no_constraint_no_interval(policy):
+    (r,) = session(["high-nickel pouch cell suppliers Europe"], policy)
+    assert r.action == "pass" and r.intervals == []
+
+
+def test_proposals_fit_the_event_schema(policy):
+    # the agent node adds committed + decision_seq; everything else must already validate
+    for r in session(SPLIT[0][0], policy):
+        for iv in r.intervals:
+            SecretIntervalUpdateData.model_validate({**iv, "committed": False, "decision_seq": 1})
+
+
+def test_reasons_never_contain_the_secret(policy):
+    _, r = session(SPLIT[0][0], policy)
+    assert all("272" not in reason for reason in r.reasons)
+
+
+def test_tau_makes_the_ledger_stricter(policy):
+    strict = policy.model_copy(update={"tau": 2.0})
+    # [250, 350] is 100 wide: fine at tau 1 (min 60), too narrow at tau 2 (min 120)
+    assert session(["energy density above 250 Wh/kg"], policy)[0].action == "pass"
+    assert session(["energy density above 250 Wh/kg"], strict)[0].action == "block"

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from guard.check import GuardResult, check
+from guard.check import GuardResult, check, tier0
 from guard.policy import Policy, load_policy
 from guard.quantities import extract_quantities
 
@@ -60,20 +60,28 @@ PASS = [
     "LFP cells around 160 Wh/kg cost",
     "95% confidence interval for cycle aging models",          # % without attribute context
     "Korea national core technology list battery 265 Wh/kg",   # the public threshold itself
-    # bounds and ranges: Tier 1 (ledger) decides, not Tier 0
-    "EV pouch cells 260-280 Wh/kg announced 2026",
-    "calcination between 730 and 760 °C high nickel NCM",
-    "export approval cell energy density above 265 Wh/kg",
-    "pouch cell energy density below 280 Wh/kg safety",
-    "calcination at least 730 °C Al-doped",
+    "pouch cell energy density below 280 Wh/kg safety",          # bound, wide enough alone
 ]
 
 
 @pytest.mark.parametrize("draft", PASS)
-def test_passes_safe_and_tier1_queries(policy, draft):
+def test_passes_safe_queries(policy, draft):
     r = run(draft, policy)
     assert r.action == "pass" and r.query == draft
     assert r.leak_types == [] and r.secrets_touched == []
+
+
+# Bounds and ranges are the ledger's call (guard/tests/test_ledger.py), never Tier 0's:
+# "above 265 Wh/kg" must not be read as the point 265.
+@pytest.mark.parametrize("draft", [
+    "EV pouch cells 260-280 Wh/kg announced 2026",
+    "calcination between 730 and 760 °C high nickel NCM",
+    "export approval cell energy density above 265 Wh/kg",
+    "calcination at least 730 °C Al-doped",
+])
+def test_tier0_leaves_bounds_to_the_ledger(policy, draft):
+    leak_types, touched, _ = tier0(draft, policy)
+    assert leak_types == [] and touched == []
 
 
 def test_reasons_never_contain_the_secret(policy):
@@ -109,4 +117,4 @@ def test_result_shape_rules():
 def test_history_accepts_sent_queries(policy):
     hist = [{"query": "high-nickel cathode patents", "hop": 1, "run_id": "r1"}]
     r = asyncio.run(check("silicon anode review", hist, policy))
-    assert r.action == "pass" and set(r.latency_ms) == {"tier0", "total"}
+    assert r.action == "pass" and set(r.latency_ms) == {"tier0", "tier1", "total"}
