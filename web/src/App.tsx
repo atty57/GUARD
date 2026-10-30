@@ -9,12 +9,13 @@ import { LeakMeter } from '@/components/LeakMeter'
 import { ProductProfile } from '@/components/ProductProfile'
 import { RunSummary } from '@/components/RunSummary'
 
-const REPLAY_URL = '/api/replay/compare_run/stream'
 
 function App() {
   const [status, setStatus] = useState('checking...')
   const [events, setEvents] = useState<RunEvent[]>([])
   const [running, setRunning] = useState(false)
+  const [runNames, setRunNames] = useState<string[]>([])
+  const [selected, setSelected] = useState('compare_run')
   const sourceRef = useRef<EventSource | null>(null)
 
   useEffect(() => {
@@ -22,6 +23,12 @@ function App() {
       .then((res) => res.json())
       .then((data) => setStatus(data.status))
       .catch(() => setStatus('backend not reachable'))
+
+    // Which recorded runs can be replayed.
+    fetch('/api/replay')
+      .then((res) => res.json())
+      .then((data: { runs: string[] }) => setRunNames(data.runs))
+      .catch(() => setRunNames([]))
   }, [])
 
   useEffect(() => () => sourceRef.current?.close(), [])
@@ -31,7 +38,7 @@ function App() {
     setEvents([])
     setRunning(true)
 
-    const source = new EventSource(REPLAY_URL)
+    const source = new EventSource(`/api/replay/${encodeURIComponent(selected)}/stream`)
     sourceRef.current = source
     const announced = new Set<Lane>()
     const completed = new Set<Lane>()
@@ -76,8 +83,20 @@ function App() {
         </div>
         <div className="flex items-center gap-3">
           <Badge variant={status === 'ok' ? 'secondary' : 'destructive'}>backend: {status}</Badge>
+          <label className="sr-only" htmlFor="run-picker">Recorded run</label>
+          <select
+            id="run-picker"
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            disabled={running}
+            className="h-8 rounded-lg border bg-background px-2 text-sm"
+          >
+            {(runNames.length ? runNames : [selected]).map((name) => (
+              <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>
+            ))}
+          </select>
           <Button onClick={startReplay} disabled={running}>
-            {running ? 'Replaying…' : 'Replay compare run'}
+            {running ? 'Replaying…' : 'Replay'}
           </Button>
         </div>
       </header>
@@ -91,7 +110,7 @@ function App() {
         />
 
         {!started && (
-          <p className="text-sm text-muted-foreground">Press “Replay compare run” to start.</p>
+          <p className="text-sm text-muted-foreground">Pick a recorded run and press “Replay” to start.</p>
         )}
 
         {started && (

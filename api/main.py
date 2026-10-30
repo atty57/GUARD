@@ -36,6 +36,12 @@ async def replay_stream(path: Path, delay: float):
         await asyncio.sleep(delay)
 
 
+@app.get("/api/replay")
+def list_replays():
+    """Names of the recorded runs the UI can replay (files in runs/fixtures/, without .jsonl)."""
+    return {"runs": sorted(p.stem for p in FIXTURES_DIR.glob("*.jsonl"))}
+
+
 @app.get("/api/replay/{name}/stream")
 def replay(name: str, delay: float = 0.6):
     # Only allow names of files that actually exist in runs/fixtures/.
