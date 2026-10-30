@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { DecisionRow, Query } from '@/components/DecisionRow'
 import { LeakMeter } from '@/components/LeakMeter'
 import { ProductProfile } from '@/components/ProductProfile'
+import { RunSummary } from '@/components/RunSummary'
 
 const REPLAY_URL = '/api/replay/compare_run/stream'
 
@@ -91,6 +92,10 @@ function App() {
 
         {!started && (
           <p className="text-sm text-muted-foreground">Press “Replay compare run” to start.</p>
+        )}
+
+        {started && (
+          <Row left={<RunSummary lane={lanes.baseline} />} right={<RunSummary lane={lanes.moat} />} />
         )}
 
         {started && (
