@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { EVENT_TYPES, type GuardDecisionEvent, type Lane, type RunEvent } from './types'
+import { EVENT_TYPES, type Lane, type RunEvent } from './types'
 import { buildLanes, type HopView, type LaneView } from '@/lib/runState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { DecisionRow, Query } from '@/components/DecisionRow'
 
 const REPLAY_URL = '/api/replay/compare_run/stream'
 
@@ -130,32 +131,6 @@ function HopCard({ hop }: { hop: HopView }) {
         {hop.skipped && <Badge variant="destructive">Hop skipped: {hop.skipped.reason}</Badge>}
       </CardContent>
     </Card>
-  )
-}
-
-function DecisionRow({ decision }: { decision: GuardDecisionEvent['data'] }) {
-  const label = { pass: 'PASS', rewrite: 'REWRITE', block: 'BLOCKED' }[decision.decision]
-  const variant = decision.decision === 'block' ? 'destructive' : decision.decision === 'rewrite' ? 'default' : 'secondary'
-  return (
-    <div className="flex flex-col gap-2">
-      <Badge variant={variant}>{label}</Badge>
-      <Query label="Drafted" text={decision.original} />
-      {decision.final !== null
-        ? decision.final !== decision.original && <Query label="Sent" text={decision.final} />
-        : <p className="text-sm text-destructive">Nothing sent</p>}
-      {decision.reasons.length > 0 && (
-        <p className="text-xs text-muted-foreground">{decision.reasons.join('; ')}</p>
-      )}
-    </div>
-  )
-}
-
-function Query({ label, text }: { label: string; text: string }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <code className="rounded-md bg-muted px-2 py-1 font-mono text-xs">{text}</code>
-    </div>
   )
 }
 
