@@ -157,6 +157,15 @@ def _default_search():
     return _stub_search
 
 
+def _default_guard():
+    """Hyeseong's real ``guard.check`` (the module exposes ``.check``); StubGuard is tests-only.
+
+    Only the ``moat``/``moat_prompt`` lanes ever call it — ``none``/``prompt`` skip the guard.
+    """
+    import guard.check as real_guard
+    return real_guard
+
+
 # --- prompts (the `prompt` / `moat_prompt` conditions add the privacy note) --------------------
 def _system(condition: str) -> str:
     base = "You are a research agent that drafts web search queries over public patents."
@@ -393,7 +402,7 @@ async def stream(task: str, condition: str, *, guard=None, search=None, client=N
     ``sequencer``/``lanes``/``emit_hello`` let a group owner (``stream_group``) coordinate the
     lanes of one compare group: one shared seq allocator and one shared announced-lane list.
     """
-    guard = guard if guard is not None else StubGuard()
+    guard = guard if guard is not None else _default_guard()
     search = search if search is not None else _default_search()
     client = client if client is not None else LLMClient()       # defaults to the real client
     policy = policy if policy is not None else load_policy(_DEFAULT_POLICY)
