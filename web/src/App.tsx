@@ -11,7 +11,8 @@ import { RunSummary } from '@/components/RunSummary'
 
 
 // One recorded run, as listed by GET /api/replay.
-type RunInfo = { name: string; lanes: Lane[]; synthetic: boolean }
+// recorded_at is only set for real recordings (runs/live/), not hand-written fixtures.
+type RunInfo = { name: string; lanes: Lane[]; synthetic: boolean; recorded_at: string | null }
 
 // Replay = play back a recorded run. Live = actually run the agent now (GET /api/live/stream).
 type Mode = 'replay' | 'live'
@@ -21,7 +22,8 @@ function App() {
   const [events, setEvents] = useState<RunEvent[]>([])
   const [running, setRunning] = useState(false)
   const [runs, setRuns] = useState<RunInfo[]>([])
-  const [playing, setPlaying] = useState<RunInfo | null>(null) // the run currently on screen
+  // What is on screen: a recorded run, a live run happening now, or nothing yet.
+  const [playing, setPlaying] = useState<RunInfo | 'live' | null>(null)
   const [selected, setSelected] = useState('compare_run')
   const [mode, setMode] = useState<Mode>('replay')
   const sourceRef = useRef<EventSource | null>(null)
@@ -51,7 +53,7 @@ function App() {
   }
 
   function startLive() {
-    setPlaying(null) // a live run is not a recording, so no "synthetic" banner
+    setPlaying('live')
     startStream('/api/live/stream?task=demo')
   }
 
@@ -177,14 +179,7 @@ function App() {
       </header>
 
       <main className="flex flex-col gap-6 p-8">
-        {playing?.synthetic && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-sm">
-            <Badge className="bg-sky-500/20 text-sky-300">Synthetic fixture replay</Badge>
-            <span className="text-muted-foreground">
-              Hand-written test data for “{playing.name.replace(/_/g, ' ')}”, not a recording of a real agent run.
-            </span>
-          </div>
-        )}
+        <SourceBanner playing={playing} modelReplay={Boolean(lanes.moat.started?.replay ?? lanes.baseline.started?.replay)} />
 
         {/* Each Row puts the baseline item on the left and the MOAT item on the right,
             so matching cards always sit at the same height. */}
@@ -235,6 +230,45 @@ function App() {
           <Row shown={shown} left={<ReportSlot lane={lanes.baseline} />} right={<ReportSlot lane={lanes.moat} />} />
         )}
       </main>
+    </div>
+  )
+}
+
+// One line above the lanes saying where this run comes from, so nobody mistakes a recording
+// (or hand-written test data) for the agent running right now.
+function SourceBanner({ playing, modelReplay }: { playing: RunInfo | 'live' | null; modelReplay: boolean }) {
+  if (playing === null) return null
+
+  let badge: string, text: string, color: string
+  if (playing === 'live') {
+    badge = 'Live run'
+    text = 'The agent is running now on the demo task.'
+    // Be upfront when the model's answers come from a saved recording (no API key).
+    if (modelReplay) text += ' Model answers come from a saved recording, so no API key is needed.'
+    color = 'emerald'
+  } else if (playing.synthetic) {
+    badge = 'Synthetic fixture replay'
+    text = `Hand-written test data for “${playing.name.replace(/_/g, ' ')}”, not a recording of a real agent run.`
+    color = 'sky'
+  } else {
+    const when = playing.recorded_at
+      ? new Date(playing.recorded_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+      : 'earlier'
+    badge = 'Replay'
+    text = `Replay of a live run recorded ${when}. Nothing is running now.`
+    color = 'violet'
+  }
+
+  // Full class names written out so Tailwind keeps them in the build.
+  const styles: Record<string, { box: string; badge: string }> = {
+    emerald: { box: 'border-emerald-500/40 bg-emerald-500/10', badge: 'bg-emerald-500/20 text-emerald-300' },
+    sky: { box: 'border-sky-500/40 bg-sky-500/10', badge: 'bg-sky-500/20 text-sky-300' },
+    violet: { box: 'border-violet-500/40 bg-violet-500/10', badge: 'bg-violet-500/20 text-violet-300' },
+  }
+  return (
+    <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-4 py-2 text-sm ${styles[color].box}`}>
+      <Badge className={styles[color].badge}>{badge}</Badge>
+      <span className="text-muted-foreground">{text}</span>
     </div>
   )
 }

@@ -73,11 +73,20 @@ def replayable() -> dict[str, tuple[Path, bool]]:
     return runs
 
 
+def recorded_at(path: Path) -> str | None:
+    """When a run was recorded: the timestamp on its first event (the group's `hello`)."""
+    with path.open(encoding="utf-8") as f:
+        first = f.readline()
+    return json.loads(first).get("ts") if first.strip() else None
+
+
 @app.get("/api/replay")
 def list_replays():
     """Recorded runs the UI can replay, with their lanes, so the UI can lay out columns
-    before the stream starts. `synthetic` tells the UI whether to label it as test data."""
-    return {"runs": [{"name": name, "lanes": lanes_in(path), "synthetic": synthetic}
+    before the stream starts. `synthetic` tells the UI whether to label it as test data;
+    `recorded_at` (real recordings only) lets it say when the run actually happened."""
+    return {"runs": [{"name": name, "lanes": lanes_in(path), "synthetic": synthetic,
+                      "recorded_at": None if synthetic else recorded_at(path)}
                      for name, (path, synthetic) in replayable().items()]}
 
 
