@@ -122,6 +122,30 @@ Every event is one JSON object:
   and re-requests a fresh stream (full replay). Scrubbing / rewind / speed is a separate
   replay-UI control (`replay_meta.speed`), not part of this contract.
 
+### Browser `EventSource` error handling
+
+The contract's SSE `event: error` shares its name with the browser's transport-error
+signal. Both reach `source.addEventListener("error", ...)` and `source.onerror`, so an
+unconditional `source.close()` in `onerror` can stop a recoverable run before its report
+and `run_complete` arrive (see PR #40).
+
+- **Server event:** a `MessageEvent` with non-empty `event.data`, containing the JSON
+  `moat.v2` envelope. Process it through the normal event handler. In `onerror`, return
+  early when `event instanceof MessageEvent && event.data` to avoid treating it as a
+  connection failure.
+- **Transport error:** a browser error signal without event data. A shared named-event
+  handler must ignore it before calling `JSON.parse(event.data)`. Handle connection loss
+  according to the reconnect/resume rules above; it is not a `moat.v2` guard decision and
+  must not be counted as a blocked or sent query.
+- **Run semantics still apply:** a server error with `data.where != "graph"` is hop-level
+  and does not by itself end the stream. `data.where == "graph"` ends the run. Keep the
+  existing `data.dispatched` distinction when rendering the error (see below).
+
+For example, `runs/fixtures/blocks_and_skips.jsonl` emits a post-dispatch search error,
+then reflection, a final report, and `run_complete`. The browser must show the search
+failure while continuing to consume those later events. The event name and `moat.v2`
+schema stay unchanged.
+
 ### Run identity & completion
 
 `run_started` is emitted **once per lane** and **binds `lane → run_id`**; its `data.lanes`
