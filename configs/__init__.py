@@ -4,7 +4,8 @@ Four conditions, all driven through the **one** agent graph (``agent.graph.strea
 condition is just a switch into that graph; it adds no second code path:
 
 - ``none``        — no guard, no privacy note (the baseline);
-- ``prompt``      — the MosaicLeaks privacy note in the draft system prompt, no guard;
+- ``prompt``      — our privacy-note instruction in the draft system prompt, no guard
+                    (our own wording, not a verbatim quote from the MosaicLeaks paper);
 - ``moat``        — the real ``guard.check`` at the trust boundary, no privacy note;
 - ``moat_prompt`` — guard **and** privacy note.
 
