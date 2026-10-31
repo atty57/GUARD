@@ -5,19 +5,65 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 type Range = [number, number]
 
-// How much of the prior range is still possible. Small = the secret is pinned down.
-function level(guess: Range, prior: Range) {
+// One secret's policy limits, from GET /api/policy (computed by guard/policy.py).
+export type SecretLimit = {
+  unit: string
+  prior: Range
+  resolution: number
+  min_width: number
+  bits_budget: number
+  threshold: number | null
+}
+
+// Why a guess breaks the policy. Mirrors `violates()` in guard/policy.py: too narrow,
+// too many bits gained, or it reveals which side of the legal threshold the value is on.
+// Empty list = within policy.
+function policyBreaches(guess: Range, limit: SecretLimit): string[] {
+  const out: string[] = []
+  const width = guess[1] - guess[0]
+  const priorWidth = limit.prior[1] - limit.prior[0]
+  if (width < limit.min_width) {
+    out.push(`Narrower than the policy allows (must stay at least ${limit.min_width} ${limit.unit} wide)`)
+  }
+  const bits = Math.max(Math.log2(priorWidth / Math.max(width, limit.resolution)), 0)
+  if (bits > limit.bits_budget) {
+    out.push('Gives away more than the policy\'s information budget for this secret')
+  }
+  if (limit.threshold !== null) {
+    const t = limit.threshold
+    const priorSettled = limit.prior[0] >= t || limit.prior[1] < t
+    if (!priorSettled && guess[0] >= t) out.push(`Reveals it is above the ${t} ${limit.unit} legal threshold`)
+    else if (!priorSettled && guess[1] < t) out.push(`Reveals it is below the ${t} ${limit.unit} legal threshold`)
+  }
+  return out
+}
+
+const EXPOSED = { label: 'Exposed', bar: 'bg-red-500', badge: 'bg-red-500/15 text-red-400' }
+const NARROWED = { label: 'Narrowed', bar: 'bg-amber-500', badge: 'bg-amber-500/15 text-amber-400' }
+const PROTECTED = { label: 'Protected', bar: 'bg-emerald-500', badge: 'bg-emerald-500/15 text-emerald-400' }
+
+// Exposed = breaks this secret's policy. Narrowed = within policy but under half the prior range.
+// Without policy limits for this secret, fall back to a fixed share of the prior range.
+function level(guess: Range, prior: Range, limit?: SecretLimit) {
   const ratio = (guess[1] - guess[0]) / (prior[1] - prior[0])
-  if (ratio < 0.15) return { label: 'Exposed', bar: 'bg-red-500', badge: 'bg-red-500/15 text-red-400' }
-  if (ratio < 0.5) return { label: 'Narrowed', bar: 'bg-amber-500', badge: 'bg-amber-500/15 text-amber-400' }
-  return { label: 'Protected', bar: 'bg-emerald-500', badge: 'bg-emerald-500/15 text-emerald-400' }
+  if (limit) {
+    const breaches = policyBreaches(guess, limit)
+    if (breaches.length) return { ...EXPOSED, breaches }
+    return { ...(ratio < 0.5 ? NARROWED : PROTECTED), breaches }
+  }
+  if (ratio < 0.15) return { ...EXPOSED, breaches: [] }
+  return { ...(ratio < 0.5 ? NARROWED : PROTECTED), breaches: [] }
 }
 
 const pretty = (dim: string) => dim.replace(/_/g, ' ')
 // "372–372" reads oddly; a one-point range is just "372".
 const span = (r: Range) => (r[0] === r[1] ? `${r[0]}` : `${r[0]}–${r[1]}`)
 
-export function LeakMeter({ lane, priors }: { lane: LaneView; priors: Record<string, PriorInfo> }) {
+export function LeakMeter({ lane, priors, limits }: {
+  lane: LaneView
+  priors: Record<string, PriorInfo>
+  limits: Record<string, SecretLimit>
+}) {
   const intervals = lane.hops.flatMap((h) => h.intervals)
   const prevented = intervals.filter((i) => i.status === 'prevented')
 
@@ -42,7 +88,7 @@ export function LeakMeter({ lane, priors }: { lane: LaneView; priors: Record<str
           }
           const { prior, unit } = info
           const pct = (v: number) => Math.min(100, Math.max(0, ((v - prior[0]) / (prior[1] - prior[0])) * 100))
-          const lv = level(guess, prior)
+          const lv = level(guess, prior, limits[dim])
           const stopped = prevented.filter((p) => p.dim === dim)
 
           return (
@@ -68,6 +114,10 @@ export function LeakMeter({ lane, priors }: { lane: LaneView; priors: Record<str
                 <span className="text-foreground">guess: {span(guess)} {unit}</span>
                 <span>{prior[1]}</span>
               </div>
+
+              {lv.breaches.map((b) => (
+                <p key={b} className="text-xs text-red-400">{b}</p>
+              ))}
 
               {stopped.map((p, i) => (
                 <p key={i} className="text-xs text-red-400">

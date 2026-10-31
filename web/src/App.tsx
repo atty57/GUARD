@@ -5,16 +5,20 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { HopCard } from '@/components/HopCard'
-import { LeakMeter } from '@/components/LeakMeter'
+import { LeakMeter, type SecretLimit } from '@/components/LeakMeter'
 import { ProductProfile } from '@/components/ProductProfile'
 import { RunSummary } from '@/components/RunSummary'
 
+
+// One recorded run, as listed by GET /api/replay.
+type RunInfo = { name: string; lanes: Lane[]; synthetic: boolean }
 
 function App() {
   const [status, setStatus] = useState('checking...')
   const [events, setEvents] = useState<RunEvent[]>([])
   const [running, setRunning] = useState(false)
-  const [runs, setRuns] = useState<{ name: string; lanes: Lane[] }[]>([])
+  const [runs, setRuns] = useState<RunInfo[]>([])
+  const [playing, setPlaying] = useState<RunInfo | null>(null) // the run currently on screen
   const [selected, setSelected] = useState('compare_run')
   const sourceRef = useRef<EventSource | null>(null)
 
@@ -27,13 +31,14 @@ function App() {
     // Which recorded runs can be replayed.
     fetch('/api/replay')
       .then((res) => res.json())
-      .then((data: { runs: { name: string; lanes: Lane[] }[] }) => setRuns(data.runs))
+      .then((data: { runs: RunInfo[] }) => setRuns(data.runs))
       .catch(() => setRuns([]))
   }, [])
 
   useEffect(() => () => sourceRef.current?.close(), [])
 
   function startReplay() {
+    setPlaying(runs.find((r) => r.name === selected) ?? null)
     sourceRef.current?.close()
     setEvents([])
     setRunning(true)
@@ -73,6 +78,17 @@ function App() {
   // Recomputed only when events change.
   const lanes = useMemo(() => buildLanes(events), [events])
   const priors = useMemo(() => priorsByDim([lanes.baseline, lanes.moat]), [lanes])
+
+  // Policy limits depend on the run's strictness (tau), so fetch them once we know it.
+  const tau = lanes.moat.started?.tau ?? lanes.baseline.started?.tau
+  const [limits, setLimits] = useState<Record<string, SecretLimit>>({})
+  useEffect(() => {
+    const url = tau === undefined ? '/api/policy' : `/api/policy?tau=${tau}`
+    fetch(url)
+      .then((res) => res.json())
+      .then((data: { secrets: Record<string, SecretLimit> }) => setLimits(data.secrets))
+      .catch(() => setLimits({})) // the meter falls back to a fixed cutoff
+  }, [tau])
 
   // What the rows need to know: has anything started, does either lane have a profile,
   // and which hop numbers appear in either lane.
@@ -118,6 +134,15 @@ function App() {
       </header>
 
       <main className="flex flex-col gap-6 p-8">
+        {playing?.synthetic && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-sm">
+            <Badge className="bg-sky-500/20 text-sky-300">Synthetic fixture replay</Badge>
+            <span className="text-muted-foreground">
+              Hand-written test data for “{playing.name.replace(/_/g, ' ')}”, not a recording of a real agent run.
+            </span>
+          </div>
+        )}
+
         {/* Each Row puts the baseline item on the left and the MOAT item on the right,
             so matching cards always sit at the same height. */}
         <Row
@@ -137,8 +162,8 @@ function App() {
         {started && (
           <Row
           shown={shown}
-            left={<LeakMeter lane={lanes.baseline} priors={priors} />}
-            right={<LeakMeter lane={lanes.moat} priors={priors} />}
+            left={<LeakMeter lane={lanes.baseline} priors={priors} limits={limits} />}
+            right={<LeakMeter lane={lanes.moat} priors={priors} limits={limits} />}
           />
         )}
 
