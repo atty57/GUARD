@@ -169,16 +169,26 @@ def draft_prompt(s: dict) -> list[dict]:
                                          f"research hop {s['search_hops'] + 1}."}]
 
 
+def _results_block(s: dict) -> str:
+    """Accumulated hits as prompt text: one line per hit, title + snippet, tagged by hop."""
+    if not s["results"]:
+        return "(no search results yet)"
+    return "\n".join(f"[hop {r.get('hop', '?')}] {r.get('title', '')}\n    {r.get('snippet', '')}"
+                     for r in s["results"])
+
+
 def reflect_prompt(s: dict) -> list[dict]:
     return [{"role": "system", "content": _system(s["condition"])},
             {"role": "user", "content": f"Reflect on task {s['task']} after {s['search_hops']} "
-                                         f"hops. Is the research complete? Answer DONE or CONTINUE."}]
+                                         f"hops. Search results so far:\n{_results_block(s)}\n\n"
+                                         f"Do these answer the task? Answer DONE or CONTINUE."}]
 
 
 def report_prompt(s: dict) -> list[dict]:
     return [{"role": "system", "content": _system(s["condition"])},
             {"role": "user", "content": f"Write the final research report for task {s['task']} "
-                                         f"from {len(s['sent_queries'])} queries."}]
+                                         f"from {len(s['sent_queries'])} queries. Cite these search "
+                                         f"results by title:\n{_results_block(s)}"}]
 
 
 # --- routing (pure; §5) ------------------------------------------------------------------------
@@ -323,7 +333,8 @@ def _build_graph(guard, search, client, policy):
                                          "fail_closed": True, "dispatched": True}})
             return base
         w({"type": "search_results", "data": results})
-        return {**base, "results": hits}
+        hop_no = s["search_hops"] + 1                       # the hop this query ran on
+        return {**base, "results": [{**h, "hop": hop_no} for h in hits]}
 
     async def skip_hop(s):
         w = get_stream_writer()

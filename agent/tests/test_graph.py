@@ -27,6 +27,7 @@ from agent.graph import (
     GuardResult,
     ResearchState,
     StubGuard,
+    _chat_completion,
     collect,
     stream_group,
 )
@@ -282,3 +283,71 @@ async def test_blocked_interval_preview_is_prevented():
     assert intervals and all(e.data.status == "prevented" for e in intervals)
     assert all(e.data.committed is False for e in intervals)
     check_stream(events, "prevented-interval")
+
+
+# --- #9: search results reach the reflect / report prompts ------------------------------------
+class _CapturingClient(FakeClient):
+    """FakeClient that records every message list it is asked to complete."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.calls: list[list[dict]] = []
+
+    async def complete(self, **kwargs):
+        self.calls.append(kwargs["messages"])
+        return await super().complete(**kwargs)
+
+
+def _marker_search(query, k=5):
+    return [{"id": "US-MARKER", "title": "Patent MARKER-TITLE-ZZZ marker-in-title",
+             "snippet": "snippet carrying MARKER-ZZZ about the task", "score": 9.0}]
+
+
+# R1: a stub search's marker string is reachable in the generate_report prompt.
+async def test_search_marker_reaches_report_prompt():
+    client = _CapturingClient()                            # default reflect_answer="DONE" -> 1 hop
+    await collect("demo", "none", search=_marker_search, client=client)
+
+    report_msgs = [c for c in client.calls
+                   if any("research report" in m["content"] for m in c)]
+    assert report_msgs, "generate_report must have been prompted"
+    text = " ".join(m["content"] for m in report_msgs[0])
+    assert "MARKER-ZZZ" in text and "MARKER-TITLE-ZZZ" in text
+    assert "[hop 1]" in text                               # hop number is carried through
+
+
+class _MarkerReflectClient(FakeClient):
+    """Says DONE only when the reflect prompt shows a result containing the answer marker."""
+
+    async def complete(self, **kwargs):
+        text = " ".join(m["content"] for m in kwargs["messages"]).lower()
+        if "reflect on task" in text:
+            return _chat_completion("DONE" if "answer-found" in text else "CONTINUE")
+        return await super().complete(**kwargs)
+
+
+# R2: reflect continues on thin results and finishes once the results answer the task.
+async def test_reflect_decides_from_results():
+    def thin_search(query, k=5):
+        return [{"id": "US1", "title": "unrelated", "snippet": "nothing useful", "score": 1.0}]
+
+    def answering_search(query, k=5):
+        return [{"id": "US2", "title": "the answer", "snippet": "ANSWER-FOUND here", "score": 9.0}]
+
+    thin = await collect("demo", "none", search=thin_search, client=_MarkerReflectClient())
+    assert thin[-1].data.hops == MAX_HOPS                  # never DONE -> loops to the cap
+
+    ans = await collect("demo", "none", search=answering_search, client=_MarkerReflectClient())
+    assert ans[-1].data.hops == 1                          # reflect saw the answer -> DONE at hop 1
+
+
+# R3: a run that sends zero queries still produces a report without crashing.
+async def test_zero_queries_still_reports():
+    # every hop's draft is blocked unsatisfiably -> skip_hop, nothing ever searched.
+    events = await collect("demo", "moat", guard=StubGuard(mode="block", block_kind="unsatisfiable"),
+                           client=FakeClient(), policy=load_policy(_POLICY))
+
+    assert events[-1].data.sent == 0
+    assert _by_type(events, "search_results") == []
+    assert _by_type(events, "report_chunk"), "a report must still be generated with no results"
+    check_stream(events, "zero-queries-report")
