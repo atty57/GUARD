@@ -5,7 +5,10 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+import guard.check as moat_guard  # Hyeseong's real guard (the module with async check())
 from agent.events import EventAdapter, to_sse
+from agent.graph import stream_group
+from agent.llm import LLMClient
 from guard.policy import load_policy
 
 app = FastAPI(title="GUARD API")
@@ -14,6 +17,9 @@ app = FastAPI(title="GUARD API")
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "runs" / "fixtures"
 # The disclosure policy (Hyeseong's guard/policy.py reads the same file).
 POLICY_PATH = Path(__file__).resolve().parent.parent / "data" / "policy.example.yaml"
+# Recorded model answers, so a live run works with no API key (LLM_MODE=replay, the default).
+# Only covers task "demo" for now; other tasks fail closed until a key or more recordings exist.
+LLM_FIXTURE = Path(__file__).resolve().parent.parent / "runs" / "recordings" / "llm_demo.jsonl"
 
 
 @app.get("/api/health")
@@ -71,6 +77,30 @@ def replay(name: str, delay: float = 0.6):
         replay_stream(available[name], delay),
         media_type="text/event-stream",
         # Tell browsers/proxies not to cache or buffer the stream (PLAN.md §11 SSE gotchas).
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+# --- Live run: actually run the agent and stream its events as they happen ---
+
+async def live_stream(task: str):
+    """Run the baseline lane, then the MOAT lane, through Atharva's agent graph.
+
+    We pass the real guard in on purpose: until A6 (#45) merges, the graph's default guard
+    is a pass-through stub that lets every query out.
+    """
+    policy = load_policy(POLICY_PATH)
+    client = LLMClient(record_path=LLM_FIXTURE)
+    async for event in stream_group(task, ["none", "moat"], guard=moat_guard,
+                                    client=client, policy=policy):
+        yield to_sse(event)
+
+
+@app.get("/api/live/stream")
+def live(task: str = "demo"):
+    return StreamingResponse(
+        live_stream(task),
+        media_type="text/event-stream",
         headers={"Cache-Control": "no-cache"},
     )
 
