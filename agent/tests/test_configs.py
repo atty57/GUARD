@@ -76,6 +76,20 @@ async def test_tau_override_changes_policy_hash():
     assert make_policy(1.5).tau == 1.5
 
 
+# 4b. tau must still apply when an explicit policy is also passed (regression: it was dropped) --
+async def test_tau_applies_over_explicit_policy():
+    policy = load_policy(_POLICY)                        # tau=1.0 as written
+    events = await run("demo", "moat", policy=policy, tau=1.5, client=FakeClient())
+
+    started = _one(events, "run_started")[0]
+    assert started.data.tau == 1.5                       # not silently ignored
+    assert started.data.policy_hash != policy_hash(policy)
+    # tau scales every secret's effective minimum width by 1.5x (S1 does not clamp to its prior).
+    scaled = make_policy(1.5)
+    s1 = policy.secret("S1")
+    assert scaled.effective_min_width(s1) == pytest.approx(1.5 * policy.effective_min_width(s1))
+
+
 # 5. an unknown condition is rejected, not run -------------------------------------------------
 async def test_unknown_condition_rejected():
     with pytest.raises(ValueError):

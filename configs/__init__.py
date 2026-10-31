@@ -34,18 +34,23 @@ def uses_guard(condition: str) -> bool:
     return condition in ("moat", "moat_prompt")
 
 
-def make_policy(tau: float | None = None, *, policy_path=_DEFAULT_POLICY) -> Policy:
-    """Load the policy, overriding ``tau`` for the sweep. Re-validates (tau must be > 0)."""
-    policy = load_policy(policy_path)
+def apply_tau(policy: Policy, tau: float | None) -> Policy:
+    """Return ``policy`` with ``tau`` overridden for the sweep. Re-validates (tau must be > 0)."""
     if tau is None or tau == policy.tau:
         return policy
     return Policy.model_validate({**policy.model_dump(), "tau": tau})
 
 
+def make_policy(tau: float | None = None, *, policy_path=_DEFAULT_POLICY) -> Policy:
+    """Load the policy from disk, overriding ``tau`` for the sweep."""
+    return apply_tau(load_policy(policy_path), tau)
+
+
 def _run_kwargs(condition: str, *, tau=None, policy=None, policy_path=_DEFAULT_POLICY, **extra):
     if condition not in CONDITIONS:
         raise ValueError(f"unknown condition {condition!r}; pick one of {CONDITIONS}")
-    policy = policy if policy is not None else make_policy(tau, policy_path=policy_path)
+    # tau applies whether the policy was loaded here or passed in explicitly (don't drop it).
+    policy = apply_tau(policy, tau) if policy is not None else make_policy(tau, policy_path=policy_path)
     # none/prompt skip the guard entirely; moat/moat_prompt use the graph's real-guard default.
     # (Tests pass an explicit guard= here to inject StubGuard — extra overrides the default.)
     return {"policy": policy, **extra}
