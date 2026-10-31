@@ -65,3 +65,20 @@ def test_rejects_bad_specs():
             SecretSpec(secret_id="Z", kind="name", dim="d", value="a"),
             SecretSpec(secret_id="Z", kind="name", dim="d", value="b"),
         ])
+
+
+def test_threshold_side_from_below(policy):
+    s = policy.secret("S1")
+    assert reveals_threshold_side(s, (150, 265))      # "below 265 Wh/kg"
+    assert not reveals_threshold_side(s, (150, 270))
+
+
+def test_policy_hash_covers_the_catalog(policy, tmp_path):
+    # same path, edited contents -> different hash
+    src = Path(__file__).resolve().parents[2] / policy.profile_catalog
+    cat = tmp_path / "catalog.yaml"
+    cat.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    p = policy.model_copy(update={"profile_catalog": str(cat)})
+    before = policy_hash(p)
+    cat.write_text(src.read_text(encoding="utf-8") + "\n# edited\n", encoding="utf-8")
+    assert policy_hash(p) != before

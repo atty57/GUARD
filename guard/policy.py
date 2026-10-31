@@ -94,8 +94,10 @@ class Policy(_M):
     # global cap on information an observer may gain about one secret, in bits
     max_bits: float = Field(default=3.0, gt=0)
     # product-profile k-anonymity: at least k candidate products must fit what has gone out.
-    # Used by the profile check in the ledger (10/30).
     k_min: int = Field(default=5, ge=1)
+    # candidate-product catalog for the profile check (guard/profile.py), relative to the repo
+    # root; None turns the check off
+    profile_catalog: str | None = None
     secrets: list[SecretSpec]
 
     @model_validator(mode="after")
@@ -139,12 +141,12 @@ def interval_metrics(s: SecretSpec, after: tuple[float, float]) -> tuple[float, 
 
 def reveals_threshold_side(s: SecretSpec, after: tuple[float, float]) -> bool:
     """True if the interval now sits wholly on one side of the legal threshold
-    while the prior did not."""
+    while the prior did not. "below 265" ([lo, 265]) settles the lower side too."""
     if s.threshold is None or s.prior is None:
         return False
     t = s.threshold
-    prior_settled = s.prior[0] >= t or s.prior[1] < t
-    now_settled = after[0] >= t or after[1] < t
+    prior_settled = s.prior[0] >= t or s.prior[1] <= t
+    now_settled = after[0] >= t or after[1] <= t
     return now_settled and not prior_settled
 
 
@@ -161,10 +163,19 @@ def load_policy(path: str | Path) -> Policy:
     return Policy.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
 
 
+_REPO = Path(__file__).resolve().parents[1]
+
+
 def policy_hash(policy: Policy) -> str:
-    """Stable hash for `run_started.policy_hash`."""
-    blob = json.dumps(policy.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
-    return "sha256:" + hashlib.sha256(blob.encode()).hexdigest()[:16]
+    """Stable hash for `run_started.policy_hash`. Covers the profile catalog's contents too,
+    since editing the catalog changes what the guard blocks."""
+    h = hashlib.sha256()
+    h.update(json.dumps(policy.model_dump(mode="json"), sort_keys=True,
+                        separators=(",", ":")).encode())
+    if policy.profile_catalog:
+        cat = Path(policy.profile_catalog)
+        h.update((cat if cat.is_absolute() else _REPO / cat).read_bytes())
+    return "sha256:" + h.hexdigest()[:16]
 
 
 if __name__ == "__main__":

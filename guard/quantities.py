@@ -3,8 +3,8 @@
 Every match is classified by how it constrains the value:
 
 - ``point``  "272 Wh/kg", "around 270 Wh/kg": states the value itself. Tier 0 checks these.
-- ``lower``  "above 250 Wh/kg", "at least 730 °C": the value is at or above the bound.
-- ``upper``  "below 280 Wh/kg", "up to 700 mAh/g": the value is at or below the bound.
+- ``lower``  "above 250 Wh/kg", "at least 730 °C", "600 mAh/g or more", "265+ Wh/kg".
+- ``upper``  "below 280 Wh/kg", "up to 700 mAh/g", "280 Wh/kg or less".
 - ``range``  "260-280 Wh/kg", "between 730 and 760 °C": both ends.
 
 Bounds and ranges are *not* exact leaks; they narrow an interval and belong to the Tier 1
@@ -101,8 +101,13 @@ _UPPER = (r"below|under|less than|lower than|at most|up to|maximum(?: of)?|max\.
 _RANGE = re.compile(
     rf"(?:between\s+)?(?P<a>{_NUM})\s*(?P<ua>{_UNIT})?\s*(?:-|–|—|to|and)\s*(?P<b>{_NUM})\s*(?P<u>{_UNIT})",
 )
-_SINGLE = re.compile(rf"(?P<n>{_NUM})\s*(?P<u>{_UNIT})")
+_SINGLE = re.compile(rf"(?P<n>{_NUM})(?P<plus>\s*\+)?\s*(?P<u>{_UNIT})")
 _BOUND_BEFORE = re.compile(rf"(?i:(?P<lo>{_LOWER})|(?P<hi>{_UPPER}))\s*$")
+# "600 mAh/g or more", "265 Wh/kg and above"
+_BOUND_AFTER = re.compile(
+    r"^\s*(?i:(?P<lo>(?:or|and) (?:more|above|higher|greater|up)\b)"
+    r"|(?P<hi>(?:or|and) (?:less|below|lower|under|fewer)\b))"
+)
 
 
 @dataclass(frozen=True)
@@ -158,7 +163,15 @@ def extract_quantities(text: str) -> list[Quantity]:
         v = to_canonical(_num(m["n"]), uid)
         before = text[max(0, m.start() - 24):m.start()]
         b = _BOUND_BEFORE.search(before)
-        kind: Kind = "point" if b is None else ("lower" if b["lo"] else "upper")
+        a = _BOUND_AFTER.search(text[m.end():m.end() + 24])
+        if m["plus"]:                               # "265+ Wh/kg"
+            kind: Kind = "lower"
+        elif b is not None:
+            kind = "lower" if b["lo"] else "upper"
+        elif a is not None:
+            kind = "lower" if a["lo"] else "upper"
+        else:
+            kind = "point"
         out.append(Quantity(kind, uid, v, v, text[m.start():m.end()], m.start(), m.end()))
         taken.append((m.start(), m.end()))
 
