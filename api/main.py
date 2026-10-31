@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from agent.events import EventAdapter, to_sse
 from guard.policy import load_policy
 
 app = FastAPI(title="GUARD API")
@@ -22,20 +23,16 @@ def health():
 
 # --- Replay a recorded run in the moat.v2 SSE format ---
 
-def to_sse(event: dict) -> str:
-    """One event -> one SSE frame: `event:` is the type, `id:` is seq (omitted when null)."""
-    lines = [f"event: {event['type']}"]
-    if event.get("seq") is not None:
-        lines.append(f"id: {event['seq']}")
-    lines.append(f"data: {json.dumps(event)}")
-    return "\n".join(lines) + "\n\n"
-
+# to_sse() comes from agent/events.py (Atharva's contract code), so replay and live runs
+# send byte-for-byte the same SSE frames.
 
 async def replay_stream(path: Path, delay: float):
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
-        event = json.loads(line)
+        # Check each recorded line against the moat.v2 contract before sending it, so a
+        # broken recording fails loudly here instead of confusing the UI.
+        event = EventAdapter.validate_json(line)
         yield to_sse(event)
         await asyncio.sleep(delay)
 
