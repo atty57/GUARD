@@ -10,11 +10,15 @@ import { ProductProfile } from '@/components/ProductProfile'
 import { RunSummary } from '@/components/RunSummary'
 
 
+// One recorded run, as listed by GET /api/replay.
+type RunInfo = { name: string; lanes: Lane[]; synthetic: boolean }
+
 function App() {
   const [status, setStatus] = useState('checking...')
   const [events, setEvents] = useState<RunEvent[]>([])
   const [running, setRunning] = useState(false)
-  const [runs, setRuns] = useState<{ name: string; lanes: Lane[] }[]>([])
+  const [runs, setRuns] = useState<RunInfo[]>([])
+  const [playing, setPlaying] = useState<RunInfo | null>(null) // the run currently on screen
   const [selected, setSelected] = useState('compare_run')
   const sourceRef = useRef<EventSource | null>(null)
 
@@ -27,13 +31,14 @@ function App() {
     // Which recorded runs can be replayed.
     fetch('/api/replay')
       .then((res) => res.json())
-      .then((data: { runs: { name: string; lanes: Lane[] }[] }) => setRuns(data.runs))
+      .then((data: { runs: RunInfo[] }) => setRuns(data.runs))
       .catch(() => setRuns([]))
   }, [])
 
   useEffect(() => () => sourceRef.current?.close(), [])
 
   function startReplay() {
+    setPlaying(runs.find((r) => r.name === selected) ?? null)
     sourceRef.current?.close()
     setEvents([])
     setRunning(true)
@@ -118,6 +123,15 @@ function App() {
       </header>
 
       <main className="flex flex-col gap-6 p-8">
+        {playing?.synthetic && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-sm">
+            <Badge className="bg-sky-500/20 text-sky-300">Synthetic fixture replay</Badge>
+            <span className="text-muted-foreground">
+              Hand-written test data for “{playing.name.replace(/_/g, ' ')}”, not a recording of a real agent run.
+            </span>
+          </div>
+        )}
+
         {/* Each Row puts the baseline item on the left and the MOAT item on the right,
             so matching cards always sit at the same height. */}
         <Row

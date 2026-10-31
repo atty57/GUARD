@@ -54,7 +54,9 @@ def lanes_in(path: Path) -> list[str]:
 def list_replays():
     """Recorded runs the UI can replay, with their lanes, so the UI can lay out columns
     before the stream starts."""
-    return {"runs": [{"name": p.stem, "lanes": lanes_in(p)}
+    # Everything in runs/fixtures/ is hand-written test data, not a recording of a real agent
+    # run, so it's marked synthetic and the UI labels it. Real recordings come later (S4).
+    return {"runs": [{"name": p.stem, "lanes": lanes_in(p), "synthetic": True}
                      for p in sorted(FIXTURES_DIR.glob("*.jsonl"))]}
 
 
