@@ -81,9 +81,9 @@ def test_fraction_bounds_need_the_attribute_named(policy):
     assert [f.secret.secret_id for f in assess("yield above 90% slot-die", [], policy)] == ["S7"]
 
 
-def test_contradictory_bound_is_ignored(policy):
+def test_bound_far_from_our_value_is_ignored(policy):
     s = policy.secret("S1")
-    assert narrow(s, (250, 280), "below 200 Wh/kg") == (250, 280)
+    assert narrow(s, (250, 280), "below 200 Wh/kg", margin=30) == (250, 280)
 
 
 def test_no_constraint_no_interval(policy):
@@ -156,3 +156,20 @@ def test_blocked_draft_previews_are_all_prevented(policy):
     assert r.action == "block"
     assert {iv["secret_id"]: iv["status"] for iv in r.intervals} == {"S1": "prevented",
                                                                      "S3": "prevented"}
+
+
+@pytest.mark.parametrize("draft", [
+    "cells 265-271 Wh/kg", "cells 273-280 Wh/kg", "calcination 746-760 °C",
+    "Ni content 88.5-90%", "Si anode 625-640 mAh/g", "yield 94-96%",
+    "cycle life 1250 to 1300 cycles",
+])
+def test_narrow_range_just_off_our_value_is_blocked(policy, draft):
+    (r,) = session([draft], policy)
+    assert r.action == "block" and r.tier == 1, draft
+
+
+def test_near_miss_bound_counts_in_the_cumulative_interval(policy):
+    # "below 744" misses 745 by 1: it still counts, and with the first query pins the value
+    first, second = session(["calcination above 740 °C", "calcination below 744 °C"], policy)
+    assert first.action == "pass"
+    assert second.action == "block" and second.leak_types == ["split"]

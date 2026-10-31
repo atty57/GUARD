@@ -10,11 +10,13 @@ whole session. Each bound or range in a query narrows that secret's feasible int
 The interval is rebuilt from ``history`` (queries that actually left) on every call, so the
 ledger holds no state of its own and can't drift from what was really sent.
 
-Only bounds that hold for our value narrow the interval. "LFP cells below 230 Wh/kg" says
-nothing true about a 272 Wh/kg product, so it is skipped; it can't hide later bounds that do
-apply. Every bound that does hold is assumed to reach the observer as a fact about the secret
-(worst case), and that interval is what the policy limits (``min_width``, bits budget,
-threshold side) are measured against. Bare points are Tier 0's job.
+Bounds that clearly miss our value are skipped: "LFP cells below 180 Wh/kg" says nothing
+about a 272 Wh/kg product, and it can't hide later bounds that do apply. "Clearly" means by
+more than half the secret's effective min width; a range that misses by less ("265-271 Wh/kg"
+against 272) still pins the value and is applied. Every applied bound is assumed to reach the
+observer as a fact about the secret, and that interval is what the policy limits
+(``min_width``, bits budget, threshold side) are measured against. Bare points are Tier 0's
+job.
 """
 
 from __future__ import annotations
@@ -56,24 +58,26 @@ def constraints(s: SecretSpec, text: str) -> list[Quantity]:
     return [q for q in extract_quantities(text) if q.kind != "point" and q.family == fam]
 
 
-def _holds(s: SecretSpec, q: Quantity, a: float, b: float) -> bool:
-    """Whether bound/range ``q`` (``a``..``b`` in the secret's unit) is true of our value."""
+def _applies(s: SecretSpec, q: Quantity, a: float, b: float, margin: float) -> bool:
+    """Whether bound/range ``q`` (``a``..``b`` in the secret's unit) is about our value:
+    it holds, or misses the value by no more than ``margin``."""
     v = float(s.value)
     if q.kind == "lower":
-        return v >= a
+        return v >= a - margin
     if q.kind == "upper":
-        return v <= b
-    return a <= v <= b
+        return v <= b + margin
+    return a - margin <= v <= b + margin
 
 
-def narrow(s: SecretSpec, interval: tuple[float, float], text: str) -> tuple[float, float]:
-    """Apply every bound/range in ``text`` that holds for our value to ``interval``
-    (both in the secret's unit). Bounds that exclude our value are skipped."""
+def narrow(s: SecretSpec, interval: tuple[float, float], text: str,
+           margin: float) -> tuple[float, float]:
+    """Apply every bound/range in ``text`` that is about our value (see ``_applies``) to
+    ``interval``, both in the secret's unit."""
     sid = unit_id(s.unit or "")
     lo, hi = interval
     for q in constraints(s, text):
         a, b = sorted((_to_secret_unit(q.lo, sid), _to_secret_unit(q.hi, sid)))
-        if not _holds(s, q, a, b):
+        if not _applies(s, q, a, b, margin):
             continue
         if q.kind == "lower":
             lo = max(lo, a)
@@ -102,16 +106,17 @@ def assess(draft: str, history: list[str], policy: Policy) -> list[Finding]:
             continue
         if not constraints(s, draft):
             continue
+        m = policy.effective_min_width(s) / 2
         before = tuple(s.prior)
         for q in history:
-            before = narrow(s, before, q)
-        after = narrow(s, before, draft)
+            before = narrow(s, before, q, m)
+        after = narrow(s, before, draft, m)
         if after == before:
             continue
         # A draft that narrows the interval is blocked if the result breaks a limit,
         # even if the history already had.
         bad = violates(policy, s, after)
-        alone = violates(policy, s, narrow(s, tuple(s.prior), draft))
+        alone = violates(policy, s, narrow(s, tuple(s.prior), draft, m))
         out.append(Finding(
             secret=s, before=before, after=after, violates=bad,
             leak_type="range" if alone else "split",

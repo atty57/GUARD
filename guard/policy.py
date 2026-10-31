@@ -95,7 +95,8 @@ class Policy(_M):
     max_bits: float = Field(default=3.0, gt=0)
     # product-profile k-anonymity: at least k candidate products must fit what has gone out.
     k_min: int = Field(default=5, ge=1)
-    # candidate-product catalog for the profile check (guard/profile.py); None turns it off
+    # candidate-product catalog for the profile check (guard/profile.py), relative to the repo
+    # root; None turns the check off
     profile_catalog: str | None = None
     secrets: list[SecretSpec]
 

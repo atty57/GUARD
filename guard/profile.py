@@ -47,10 +47,17 @@ class Catalog:
         return next(p for p in self.products if p["id"] == self.target)
 
 
-@lru_cache(maxsize=8)
 def load_catalog(path: str) -> Catalog:
+    """Load the catalog; ``path`` is relative to the repo root. Cached on (path, mtime), so an
+    edited catalog is picked up by a long-running server."""
     p = Path(path)
-    raw = yaml.safe_load((p if p.is_absolute() else _REPO / p).read_text(encoding="utf-8"))
+    p = p if p.is_absolute() else _REPO / p
+    return _load(str(p), p.stat().st_mtime_ns)
+
+
+@lru_cache(maxsize=8)
+def _load(path: str, _mtime: int) -> Catalog:
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     terms = {a: {t: frozenset(str(v) for v in vs) for t, vs in ts.items()}
              for a, ts in raw["attributes"].items()}
     products = tuple({k: str(v) for k, v in pr.items()} for pr in raw["products"])
