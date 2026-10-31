@@ -31,13 +31,17 @@ function App() {
       .then((res) => res.json())
       .then((data) => setStatus(data.status))
       .catch(() => setStatus('backend not reachable'))
+  }, [])
 
-    // Which recorded runs can be replayed.
+  // Which recorded runs can be replayed. Loaded on start and again each time a run finishes,
+  // so a live run that was just saved shows up in the picker right away.
+  useEffect(() => {
+    if (running) return
     fetch('/api/replay')
       .then((res) => res.json())
       .then((data: { runs: RunInfo[] }) => setRuns(data.runs))
       .catch(() => setRuns([]))
-  }, [])
+  }, [running])
 
   useEffect(() => () => sourceRef.current?.close(), [])
 
