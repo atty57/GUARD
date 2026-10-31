@@ -13,6 +13,9 @@ import { RunSummary } from '@/components/RunSummary'
 // One recorded run, as listed by GET /api/replay.
 type RunInfo = { name: string; lanes: Lane[]; synthetic: boolean }
 
+// Replay = play back a recorded run. Live = actually run the agent now (GET /api/live/stream).
+type Mode = 'replay' | 'live'
+
 function App() {
   const [status, setStatus] = useState('checking...')
   const [events, setEvents] = useState<RunEvent[]>([])
@@ -20,6 +23,7 @@ function App() {
   const [runs, setRuns] = useState<RunInfo[]>([])
   const [playing, setPlaying] = useState<RunInfo | null>(null) // the run currently on screen
   const [selected, setSelected] = useState('compare_run')
+  const [mode, setMode] = useState<Mode>('replay')
   const sourceRef = useRef<EventSource | null>(null)
 
   useEffect(() => {
@@ -39,11 +43,22 @@ function App() {
 
   function startReplay() {
     setPlaying(runs.find((r) => r.name === selected) ?? null)
+    startStream(`/api/replay/${encodeURIComponent(selected)}/stream`)
+  }
+
+  function startLive() {
+    setPlaying(null) // a live run is not a recording, so no "synthetic" banner
+    startStream('/api/live/stream?task=demo')
+  }
+
+  // Live and replay send the exact same moat.v2 events, so one handler serves both;
+  // only the URL differs.
+  function startStream(url: string) {
     sourceRef.current?.close()
     setEvents([])
     setRunning(true)
 
-    const source = new EventSource(`/api/replay/${encodeURIComponent(selected)}/stream`)
+    const source = new EventSource(url)
     sourceRef.current = source
     const announced = new Set<Lane>()
     const completed = new Set<Lane>()
@@ -98,7 +113,8 @@ function App() {
   // ["moat"]). If nothing is known yet, show both so the empty layout still makes sense.
   const announced = lanes.baseline.started?.lanes ?? lanes.moat.started?.lanes
     // Before the stream says, use the lanes the backend listed for the selected run.
-    ?? runs.find((r) => r.name === selected)?.lanes
+    // (Live runs always have both lanes, so they fall through to "show both".)
+    ?? (mode === 'replay' ? runs.find((r) => r.name === selected)?.lanes : undefined)
   const shown = { baseline: announced ? announced.includes('baseline') : true,
                   moat: announced ? announced.includes('moat') : true }
   const hasProfile = Boolean(lanes.baseline.profile || lanes.moat.profile)
@@ -115,21 +131,44 @@ function App() {
         </div>
         <div className="flex items-center gap-3">
           <Badge variant={status === 'ok' ? 'secondary' : 'destructive'}>backend: {status}</Badge>
-          <label className="sr-only" htmlFor="run-picker">Recorded run</label>
-          <select
-            id="run-picker"
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-            disabled={running}
-            className="h-8 rounded-lg border bg-background px-2 text-sm"
-          >
-            {(runs.length ? runs.map((r) => r.name) : [selected]).map((name) => (
-              <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>
+          {/* Live / Replay toggle. Locked while a run is streaming. */}
+          <div role="group" aria-label="Run mode" className="flex rounded-lg border p-0.5">
+            {(['replay', 'live'] as const).map((m) => (
+              <Button
+                key={m}
+                size="sm"
+                variant={mode === m ? 'secondary' : 'ghost'}
+                aria-pressed={mode === m}
+                disabled={running}
+                onClick={() => setMode(m)}
+              >
+                {m === 'replay' ? 'Replay' : 'Live'}
+              </Button>
             ))}
-          </select>
-          <Button onClick={startReplay} disabled={running}>
-            {running ? 'Replaying…' : 'Replay'}
-          </Button>
+          </div>
+          {mode === 'replay' ? (
+            <>
+              <label className="sr-only" htmlFor="run-picker">Recorded run</label>
+              <select
+                id="run-picker"
+                value={selected}
+                onChange={(e) => setSelected(e.target.value)}
+                disabled={running}
+                className="h-8 rounded-lg border bg-background px-2 text-sm"
+              >
+                {(runs.length ? runs.map((r) => r.name) : [selected]).map((name) => (
+                  <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>
+                ))}
+              </select>
+              <Button onClick={startReplay} disabled={running}>
+                {running ? 'Replaying…' : 'Replay'}
+              </Button>
+            </>
+          ) : (
+            <Button onClick={startLive} disabled={running}>
+              {running ? 'Running…' : 'Run live'}
+            </Button>
+          )}
         </div>
       </header>
 
@@ -152,7 +191,11 @@ function App() {
         />
 
         {!started && (
-          <p className="text-sm text-muted-foreground">Pick a recorded run and press “Replay” to start.</p>
+          <p className="text-sm text-muted-foreground">
+            {mode === 'replay'
+              ? 'Pick a recorded run and press “Replay” to start.'
+              : 'Press “Run live” to run the agent now on the demo task, with and without MOAT.'}
+          </p>
         )}
 
         {started && (
