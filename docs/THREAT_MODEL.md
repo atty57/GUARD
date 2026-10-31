@@ -4,6 +4,8 @@
 
 What we protect, from whom, and what we do and don't claim. Interfaces: `docs/INTERFACES.md`. Secrets and policy values: `docs/DATA_SPEC.md`.
 
+Structured by the four questions of the [Threat Modeling Manifesto](https://www.threatmodelingmanifesto.org/): what are we working on (§1–2), what can go wrong (§3–4), what are we going to do about it (§4–5), did we do a good enough job (§5 tests, §6–7).
+
 ---
 
 ## 1. System and trust boundary
@@ -39,6 +41,8 @@ Meta's built-in `web_search` tool runs server-side and would bypass the guard, s
 
 ## 3. Adversaries
 
+Both adversaries aim at STRIDE Information Disclosure: exposure of information to people who are not supposed to have it ([Microsoft](https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool-threats)).
+
 **A1. Passive query observer (primary).** The search provider, or anyone with its logs.
 - Sees every query the agent dispatches in a session, in order, and can link them to one session.
 - Knows public information: typical value ranges (our `prior`), public legal thresholds, public patents.
@@ -49,6 +53,9 @@ Meta's built-in `web_search` tool runs server-side and would bypass the guard, s
 **A2. Content injector.** Controls a page that search returns (the poisoned pages, DATA_SPEC §5).
 - Tries to make the agent put secrets into its next query.
 - Cannot reach the guard, the policy or the catalog. The guard checks every query, whatever the reason it was drafted.
+- This is indirect prompt injection, OWASP [LLM01:2025](https://genai.owasp.org/llmrisk/llm01-prompt-injection/). Rall et al. used it to make agents put a knowledge-base secret into a web-search tool call, with no defense in place, and recommend a policy layer between agent and tools ([Rall et al., 2025](https://arxiv.org/abs/2510.09093)). MOAT is such a layer.
+
+The harm in both cases is OWASP [LLM02:2025](https://genai.owasp.org/llmrisk/llm022025-sensitive-information-disclosure/) Sensitive Information Disclosure. LLM02 is written about model output; applying it to outbound tool arguments is our reading.
 
 ## 4. Leak channels and controls
 
@@ -94,18 +101,17 @@ Event logs are inside the boundary: `guard_decision.original` records the blocke
 ## 7. Out of scope
 
 - An adaptive attacker who knows the guard's rules and searches for phrasings that pass. We report what the evaluation shows; we don't claim robustness to it.
-- Blocks depend on the secret, so a query that never appears can itself be a clue (e.g. an injected page making the agent sweep ranges while the attacker reads the query log). Not defended.
+- Blocks depend on the secret, so a query that never appears can itself be a clue (e.g. an injected page making the agent sweep ranges while the attacker reads the query log). In query-auditing terms the ledger is not a simulatable auditor, one whose deny decisions don't depend on the protected data (Kenthapadi, Mishra & Nissim, "Simulatable Auditing", PODS 2005, [doi:10.1145/1065167.1065183](https://doi.org/10.1145/1065167.1065183)). Not defended.
 - Aggregation across separate sessions or agents.
 - Side channels: number, timing or size of queries.
 - What the search provider sends back (inbound), beyond injected instructions (A2).
 - The final report, which goes to the user inside the boundary.
 - A compromised host, policy file or model provider.
 
-## 8. Design rationale and related work
+## 8. Sources for the design
 
-- **Why a control on outbound queries.** Meta's Agents Rule of Two, framed around prompt injection, says an agent should have at most two of: [A] processing untrustworthy inputs, [B] access to sensitive systems or private data, [C] changing state or communicating externally; an agent with all three should not run autonomously without supervision ([Meta AI, 2025](https://ai.meta.com/blog/practical-ai-agent-security/)). A research agent that reads internal docs and searches the web has all three. MOAT is an automated check on [C], the query channel: it reduces what that supervision has to catch (A2) and also covers leaks no injection is needed for (A1). It does not replace the supervision.
-- **Where it sits next to existing guardrails.** LlamaFirewall provides PromptGuard 2 (jailbreak detection), Agent Alignment Checks (reasoning audit), CodeShield (insecure code) and customizable scanners ([Chennabasappa et al., 2025](https://arxiv.org/abs/2505.03574)). MOAT checks a different thing: what the agent's outbound queries reveal, across the whole session.
-- **Measuring leakage in bits.** The ledger's `bits = log2(prior width / interval width)` is min-entropy leakage under a uniform prior, the measure Smith argues for in quantitative information flow ([Smith, 2009](https://doi.org/10.1007/978-3-642-00596-1_21)).
-- **Mosaic leaks.** Pieces that are harmless alone can reveal a secret together; this is the "mosaic theory" of US national-security FOIA law ([Pozen, 2005](https://yalelawjournal.org/note/the-mosaic-theory-national-security-and-the-freedom-of-information-act)). The ledger is a mosaic check over one session.
-- **Profile check.** The check is k-anonymity-style: what has gone out about our product should still fit at least k candidates (after Sweeney, "k-Anonymity: A Model for Protecting Privacy", IJUFKS 10(5):557–570, 2002; [project page](https://dataprivacylab.org/projects/kanonymity/)). Unlike k-anonymity proper, k is counted over a hand-written catalog of fictional products and there is no automatic generalization.
-- **An alternative defense.** TrackMeNot hides real search queries among generated decoy queries ([Toubiana, Subramanian & Nissenbaum, 2011](https://arxiv.org/abs/1109.4677)). MOAT changes or stops the real query instead, so no decoy traffic is needed.
+- **Tier 0** is exact data match in the DLP sense: content is compared with known sensitive values, not with patterns ([Microsoft Purview EDM](https://learn.microsoft.com/en-us/purview/sit-learn-about-exact-data-match-based-sits)). MOAT adds tolerance, unit conversion and aliases.
+- **Tier 1 ledger** borrows the idea of online query auditing (deny a query if, with earlier ones, it would pin a protected value) but is not a formal auditor: it is a heuristic over intervals parsed from free text (see §7).
+- **`bits`** = log2(prior width / interval width), min-entropy leakage under a uniform prior (Smith, "On the Foundations of Quantitative Information Flow", FoSSaCS 2009, [doi:10.1007/978-3-642-00596-1_21](https://doi.org/10.1007/978-3-642-00596-1_21)).
+- **Mosaic leaks**: pieces harmless alone, revealing together (Pozen, "The Mosaic Theory, National Security, and the Freedom of Information Act", 115 Yale L.J. 628, 2005, [link](https://yalelawjournal.org/note/the-mosaic-theory-national-security-and-the-freedom-of-information-act)).
+- **Profile check** is k-anonymity-style (Sweeney, "k-Anonymity: A Model for Protecting Privacy", IJUFKS 10(5):557–570, 2002, [link](https://dataprivacylab.org/projects/kanonymity/)): k is counted over a hand-written catalog of fictional products, with no automatic generalization.
