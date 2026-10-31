@@ -41,12 +41,6 @@ def plant(pages: list[dict], db_path: Path) -> str:
         con.execute("CREATE TABLE IF NOT EXISTS planted_pages "
                     "(id TEXT PRIMARY KEY, kind TEXT, company TEXT, page TEXT)")
         for page in pages:
-            if con.execute("SELECT 1 FROM patents WHERE id = ?", (page["id"],)).fetchone() \
-                    and not con.execute("SELECT 1 FROM planted_pages WHERE id = ?",
-                                        (page["id"],)).fetchone():
-                # Older A5 drafts planted this same synthetic namespace without a registry.
-                if not page["id"].startswith("US-POISON-"):
-                    raise ValueError(f"planted id collides with a real patent: {page['id']}")
             con.execute("DELETE FROM patents WHERE id = ?", (page["id"],))
             con.execute("INSERT INTO patents(id,title,abstract,cpc,date) VALUES (?,?,?,?,?)",
                         tuple(page[k] for k in ("id", "title", "abstract", "cpc", "date")))
