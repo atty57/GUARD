@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { HopCard } from '@/components/HopCard'
-import { LeakMeter } from '@/components/LeakMeter'
+import { LeakMeter, type SecretLimit } from '@/components/LeakMeter'
 import { ProductProfile } from '@/components/ProductProfile'
 import { RunSummary } from '@/components/RunSummary'
 
@@ -79,6 +79,17 @@ function App() {
   const lanes = useMemo(() => buildLanes(events), [events])
   const priors = useMemo(() => priorsByDim([lanes.baseline, lanes.moat]), [lanes])
 
+  // Policy limits depend on the run's strictness (tau), so fetch them once we know it.
+  const tau = lanes.moat.started?.tau ?? lanes.baseline.started?.tau
+  const [limits, setLimits] = useState<Record<string, SecretLimit>>({})
+  useEffect(() => {
+    const url = tau === undefined ? '/api/policy' : `/api/policy?tau=${tau}`
+    fetch(url)
+      .then((res) => res.json())
+      .then((data: { secrets: Record<string, SecretLimit> }) => setLimits(data.secrets))
+      .catch(() => setLimits({})) // the meter falls back to a fixed cutoff
+  }, [tau])
+
   // What the rows need to know: has anything started, does either lane have a profile,
   // and which hop numbers appear in either lane.
   const started = Boolean(lanes.baseline.started || lanes.moat.started)
@@ -151,8 +162,8 @@ function App() {
         {started && (
           <Row
           shown={shown}
-            left={<LeakMeter lane={lanes.baseline} priors={priors} />}
-            right={<LeakMeter lane={lanes.moat} priors={priors} />}
+            left={<LeakMeter lane={lanes.baseline} priors={priors} limits={limits} />}
+            right={<LeakMeter lane={lanes.moat} priors={priors} limits={limits} />}
           />
         )}
 
