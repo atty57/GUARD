@@ -46,8 +46,12 @@ LICENSE = "CC BY 4.0"
 CORPUS_NAME = "uspto-h01m"                     # stamped into the DB; surfaced as search_results.corpus
 
 # CPC subgroups (CPC 2026 scheme), confirmed 2026-10-30 against the official USPTO/CPC definitions.
-CPC_CATHODE = {"H01M4/525", "H01M4/386"}      # Ni/Co/Fe mixed-oxide cathode + Si-based anode material
-CPC_CELL = {"H01M10/0525", "H01M50/105"}      # Li-ion (rocking-chair) cell + pouch/flexible casing
+# The two buckets drive the 60/40 sample split. "cathode" is a loose label: it's really the
+# electrode-materials class (H01M4/*, which includes the Si anode H01M4/386) vs. the cell/packaging
+# class (H01M10/*, H01M50/*). Kept as "cathode"/"cell" because that name flows into the DB, the
+# manifest counts and the tests; the split is materials-vs-cell, not literally cathode-vs-cell.
+CPC_CATHODE = {"H01M4/525", "H01M4/386"}      # electrode materials: Ni/Co/Fe mixed-oxide cathode + Si anode
+CPC_CELL = {"H01M10/0525", "H01M50/105"}      # cell + packaging: Li-ion (rocking-chair) cell + pouch casing
 CPC_TARGET = CPC_CATHODE | CPC_CELL
 YEARS = range(2015, 2025)                     # grants 2015–2024 inclusive
 TARGET_N = 4000
