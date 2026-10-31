@@ -10,9 +10,11 @@ whole session. Each bound or range in a query narrows that secret's feasible int
 The interval is rebuilt from ``history`` (queries that actually left) on every call, so the
 ledger holds no state of its own and can't drift from what was really sent.
 
-Worst-case observer: every bound in a sent query is assumed to describe the secret. That is
-what the policy limits (``min_width``, bits budget, threshold side) are measured against.
-Bare points are Tier 0's job and don't narrow the interval here.
+Only bounds that hold for our value narrow the interval. "LFP cells below 230 Wh/kg" says
+nothing true about a 272 Wh/kg product, so it is skipped; it can't hide later bounds that do
+apply. Every bound that does hold is assumed to reach the observer as a fact about the secret
+(worst case), and that interval is what the policy limits (``min_width``, bits budget,
+threshold side) are measured against. Bare points are Tier 0's job.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from guard.quantities import UNITS, Quantity, extract_quantities, family, unit_i
 # Fraction units (%, wt%, ppm) are ambiguous on their own; a bound only applies to a secret
 # whose attribute is named in the same query. Same rule as Tier 0.
 CONTEXT = {
-    "ni_content": r"\bni\b|nickel|\bncm|\bnca\b",
+    "ni_content": r"\bni\b|nickel|\bncm|\bnmc|\bnca\b",
     "production_yield": r"yield",
     "al_dopant": r"\bal\b|alumin|dop",
 }
@@ -54,22 +56,31 @@ def constraints(s: SecretSpec, text: str) -> list[Quantity]:
     return [q for q in extract_quantities(text) if q.kind != "point" and q.family == fam]
 
 
+def _holds(s: SecretSpec, q: Quantity, a: float, b: float) -> bool:
+    """Whether bound/range ``q`` (``a``..``b`` in the secret's unit) is true of our value."""
+    v = float(s.value)
+    if q.kind == "lower":
+        return v >= a
+    if q.kind == "upper":
+        return v <= b
+    return a <= v <= b
+
+
 def narrow(s: SecretSpec, interval: tuple[float, float], text: str) -> tuple[float, float]:
-    """Apply every bound/range in ``text`` to ``interval`` (both in the secret's unit).
-    A constraint that would empty the interval is ignored: it can't be about this secret."""
+    """Apply every bound/range in ``text`` that holds for our value to ``interval``
+    (both in the secret's unit). Bounds that exclude our value are skipped."""
     sid = unit_id(s.unit or "")
     lo, hi = interval
     for q in constraints(s, text):
-        a, b = _to_secret_unit(q.lo, sid), _to_secret_unit(q.hi, sid)
-        a, b = min(a, b), max(a, b)
+        a, b = sorted((_to_secret_unit(q.lo, sid), _to_secret_unit(q.hi, sid)))
+        if not _holds(s, q, a, b):
+            continue
         if q.kind == "lower":
-            new = (max(lo, a), hi)
+            lo = max(lo, a)
         elif q.kind == "upper":
-            new = (lo, min(hi, b))
+            hi = min(hi, b)
         else:  # range
-            new = (max(lo, a), min(hi, b))
-        if new[0] <= new[1]:
-            lo, hi = new
+            lo, hi = max(lo, a), min(hi, b)
     return lo, hi
 
 
@@ -97,24 +108,25 @@ def assess(draft: str, history: list[str], policy: Policy) -> list[Finding]:
         after = narrow(s, before, draft)
         if after == before:
             continue
-        # Block only what this draft makes worse: if the interval was already past a limit,
-        # any further narrowing is still a violation.
+        # A draft that narrows the interval is blocked if the result breaks a limit,
+        # even if the history already had.
         bad = violates(policy, s, after)
         alone = violates(policy, s, narrow(s, tuple(s.prior), draft))
         out.append(Finding(
             secret=s, before=before, after=after, violates=bad,
             leak_type="range" if alone else "split",
-            threshold_side=reveals_threshold_side(s, after) and not reveals_threshold_side(s, before),
+            threshold_side=(reveals_threshold_side(s, after)
+                            and not reveals_threshold_side(s, before)),
         ))
     return out
 
 
-def proposal(policy: Policy, f: Finding, basis: str) -> dict:
+def proposal(policy: Policy, f: Finding, basis: str, blocked: bool = False) -> dict:
     """``IntervalProposal`` (INTERFACES §1) as a plain dict; the agent node adds
-    ``committed`` and ``decision_seq``."""
+    ``committed`` and ``decision_seq``. On a blocked draft every proposal is ``prevented``."""
     s = f.secret
     ratio, bits = interval_metrics(s, f.after)
-    if f.violates:
+    if blocked or f.violates:
         status = "prevented"
     elif bits > policy.bits_budget(s) / 2:
         status = "warning"

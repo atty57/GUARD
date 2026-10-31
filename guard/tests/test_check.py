@@ -85,11 +85,16 @@ def test_tier0_leaves_bounds_to_the_ledger(policy, draft):
 
 
 def test_reasons_never_contain_the_secret(policy):
-    r = run("pouch cell 0.272 kWh/kg EV benchmark", policy)
-    assert all("272" not in reason.replace("0.272", "") for reason in r.reasons)
-    r = run("Ostrava EV platform supplier", policy)
-    assert all("Project Ostrava" not in reason for reason in r.reasons)
-
+    # reasons go to the UI and run logs: no value, no unit form, no alias, no matched text
+    leaks = ["pouch cell 0.272 kWh/kg EV benchmark", "edge cracking yield 93.5% slot-die",
+             "cathode nickel 88% firing", "NCM 88/06/06 cathode", "Ostrava supplier news",
+             "pouch cell mass production Q3 2027 Europe", "lithiation firing 1018 K"]
+    banned = {"272", "0.272", "93.5", "88", "1018", "745", "Ostrava", "Q3 2027", "2027"}
+    for draft in leaks:
+        r = run(draft, policy)
+        assert r.action == "block", draft
+        for reason in r.reasons:
+            assert not any(b in reason for b in banned), (draft, reason)
 
 def test_quantity_kinds():
     kinds = {q.text: q.kind for q in extract_quantities(

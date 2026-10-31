@@ -15,7 +15,7 @@ secrets:
      equivalents: ["0.272 kWh/kg"], grade: NCT, docs: [D1, D4],
      prior: [150, 350], min_width: 60, resolution: 1, threshold: 265}
   - {secret_id: S2, kind: numeric, dim: ni_content, unit: pct, value: 88,
-     equivalents: ["Ni 0.88", "NCM 88/06/06", "NCM88"], grade: NCT, docs: [D1, D2, D5],
+     equivalents: ["Ni 0.88", "NCM 88/06/06", "NCM88", "NCM 88", "NMC88", "NMC 88"], grade: NCT, docs: [D1, D2, D5],
      prior: [50, 95], min_width: 15, resolution: 0.5, threshold: 80}
   - {secret_id: S3, kind: numeric, dim: calcination_temp, unit: degC, value: 745,
      equivalents: ["1018 K"], grade: TS, docs: [D2, D4],

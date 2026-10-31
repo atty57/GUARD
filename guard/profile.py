@@ -2,17 +2,22 @@
 
 No single query has to contain a number to give the product away. "high-nickel pouch cell
 suppliers Europe" and later "silicon anode cells SOP 2027" together can leave only one or two
-products in the market that fit. This is k-anonymity (Sweeney, 2002) applied to the session:
+products in the market that fit. The check is k-anonymity-style (after Sweeney, 2002):
 
     k = number of candidate products that fit every attribute the sent queries revealed
 
-A draft that would push k below ``policy.k_min`` while our own product still fits is blocked.
-(If the revealed profile already rules our product out, the crowd size says nothing about us.) If the queries already sent keep
-k at or above ``k_min``, the draft is ``redraftable`` (drop or broaden the new term).
-If they already don't, any new restriction is ``unsatisfiable`` and the hop is skipped.
+Only terms that are true of our own product count. "LFP cells" rules our product out, so it
+reveals nothing about it and is ignored; it can't hide later terms that do apply.
 
-Candidates and the term vocabulary live in a catalog file (``data/profile_catalog.*.yaml``),
-referenced by ``Policy.profile_catalog``. The check is off when the policy names no catalog.
+A draft that would push k below ``policy.k_min`` is blocked as ``redraftable`` (drop or
+broaden the new term). ``unsatisfiable`` is a defensive path: it is only reached if the
+history is already under ``k_min`` (e.g. ``k_min`` raised mid-session), since the guard
+never lets a guarded session get there.
+
+k is a crowd count over a hand-written catalog of fictional products, not a market survey, and
+there is no automatic generalization (``generalized_from`` is always None). Candidates and the
+term vocabulary live in ``data/profile_catalog.*.yaml``, referenced by
+``Policy.profile_catalog``. The check is off when the policy names no catalog.
 """
 
 from __future__ import annotations
@@ -34,15 +39,12 @@ class Catalog:
     products: tuple[dict, ...]
     target: str                                   # id of our own product
 
-    @staticmethod
-    def _fits(p: dict, revealed: dict[str, set[str]]) -> bool:
-        return all(p[a] in vals for a, vals in revealed.items())
-
     def k(self, revealed: dict[str, set[str]]) -> int:
-        return sum(self._fits(p, revealed) for p in self.products)
+        return sum(all(p[a] in vals for a, vals in revealed.items()) for p in self.products)
 
-    def target_fits(self, revealed: dict[str, set[str]]) -> bool:
-        return any(p["id"] == self.target and self._fits(p, revealed) for p in self.products)
+    @property
+    def target_product(self) -> dict:
+        return next(p for p in self.products if p["id"] == self.target)
 
 
 @lru_cache(maxsize=8)
@@ -63,12 +65,14 @@ def _found(term: str, text: str) -> bool:
 
 
 def revealed_by(cat: Catalog, text: str) -> dict[str, tuple[str, frozenset[str]]]:
-    """Attribute -> (most specific term in ``text``, values it covers)."""
+    """Attribute -> (most specific term in ``text`` that is true of our product, values it
+    covers). Terms that rule our product out are left out."""
+    ours = cat.target_product
     out: dict[str, tuple[str, frozenset[str]]] = {}
     for attr, terms in cat.terms.items():
         if attr == "region" and not cat.region_context.search(text):
             continue
-        hits = [(t, vals) for t, vals in terms.items() if _found(t, text)]
+        hits = [(t, vals) for t, vals in terms.items() if ours[attr] in vals and _found(t, text)]
         if hits:
             out[attr] = min(hits, key=lambda h: len(h[1]))  # narrowest term wins
     return out
@@ -92,13 +96,13 @@ class ProfileFinding:
     k_after: int
     k_min: int
     revealed: dict[str, str]        # attr -> term, cumulative incl. the draft
-    new_terms: list[str]            # terms in the draft that narrowed the crowd
+    new_attrs: list[str]            # attributes the draft narrowed
     violates: bool
     satisfiable: bool               # could a broader draft still keep k >= k_min?
 
 
 def assess(cat: Catalog, draft: str, history: list[str], k_min: int) -> ProfileFinding | None:
-    """None when the draft reveals no profile attribute."""
+    """None when the draft reveals nothing true of our product."""
     d = revealed_by(cat, draft)
     if not d:
         return None
@@ -106,20 +110,20 @@ def assess(cat: Catalog, draft: str, history: list[str], k_min: int) -> ProfileF
     before, _ = _combine(hist_views)
     after, shown = _combine(hist_views + [d])
     k_before, k_after = cat.k(before), cat.k(after)
-    new_terms = [term for attr, (term, _) in d.items()
-                 if attr not in before or len(after[attr]) < len(before[attr])]
+    new_attrs = [attr for attr in d if attr not in before or len(after[attr]) < len(before[attr])]
     narrowed = k_after < k_before
     return ProfileFinding(
         k_before=k_before, k_after=k_after, k_min=k_min, revealed=shown,
-        new_terms=new_terms if narrowed else [],
-        violates=narrowed and k_after < k_min and cat.target_fits(after),
+        new_attrs=new_attrs if narrowed else [],
+        violates=narrowed and k_after < k_min,
         satisfiable=k_before >= k_min,
     )
 
 
-def proposal(f: ProfileFinding) -> dict:
-    """``ProfileProposal`` (INTERFACES §1) as a plain dict, plus ``status``."""
-    if f.violates:
+def proposal(f: ProfileFinding, blocked: bool = False) -> dict:
+    """``ProfileProposal`` (INTERFACES §1) as a plain dict, plus ``status``.
+    On a blocked draft the proposal is ``prevented``."""
+    if blocked or f.violates:
         status = "prevented"
     elif f.k_after < 2 * f.k_min:
         status = "warning"

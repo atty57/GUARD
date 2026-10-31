@@ -108,3 +108,51 @@ def test_tau_makes_the_ledger_stricter(policy):
     # [250, 350] is 100 wide: fine at tau 1 (min 60), too narrow at tau 2 (min 120)
     assert session(["energy density above 250 Wh/kg"], policy)[0].action == "pass"
     assert session(["energy density above 250 Wh/kg"], strict)[0].action == "block"
+
+
+# --- regressions from the pre-PR review ------------------------------------------------------
+
+@pytest.mark.parametrize("earlier,draft", [
+    ("LFP cells below 230 Wh/kg", "pouch cells 268-276 Wh/kg"),
+    ("LFP cells below 230 Wh/kg", "pouch cells above 265 Wh/kg"),
+    ("sintering above 900 °C ceramics", "calcination 740-750 °C"),
+])
+def test_off_target_bound_does_not_switch_the_ledger_off(policy, earlier, draft):
+    first, second = session([earlier, draft], policy)
+    assert first.action == "pass" and first.intervals == []   # not true of our value: ignored
+    assert second.action == "block" and second.tier == 1
+
+
+def test_bound_that_excludes_our_value_is_not_a_leak(policy):
+    (r,) = session(["LFP cells below 180 Wh/kg"], policy)
+    assert r.action == "pass" and r.intervals == []
+
+
+def below_threshold(policy: Policy) -> Policy:
+    """Same policy with S1 at 258 Wh/kg, under the 265 line (like half the companies)."""
+    secrets = [s.model_copy(update={"value": 258}) if s.secret_id == "S1" else s
+               for s in policy.secrets]
+    return policy.model_copy(update={"secrets": secrets})
+
+
+@pytest.mark.parametrize("draft", ["EV pouch cells below 265 Wh/kg", "pouch cells <265 Wh/kg",
+                                   "pouch cells 265 Wh/kg or less"])
+def test_threshold_side_from_below(policy, draft):
+    (r,) = session([draft], below_threshold(policy))
+    assert r.action == "block" and r.secrets_touched == ["S1"]
+
+
+@pytest.mark.parametrize("draft,sid", [("pouch cells 265+ Wh/kg", "S1"),
+                                       ("Si anode 600 mAh/g or more", "S6")])
+def test_postfix_bounds(policy, draft, sid):
+    (r,) = session([draft], policy)
+    assert r.action == "block" and r.secrets_touched == [sid]
+
+
+def test_blocked_draft_previews_are_all_prevented(policy):
+    # S1 alone would be fine; S3 breaks its limit -> both previews of the blocked draft are
+    # prevented, since nothing from it goes out
+    (r,) = session(["energy density above 200 Wh/kg calcination 730-760 °C"], policy)
+    assert r.action == "block"
+    assert {iv["secret_id"]: iv["status"] for iv in r.intervals} == {"S1": "prevented",
+                                                                     "S3": "prevented"}

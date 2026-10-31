@@ -1,10 +1,9 @@
 # Candidate products an outside observer could confuse with ours: the "crowd" for the profile
-# check (k-anonymity, guard/profile.py). All makers and products are fictional.
+# check (k-anonymity-style, guard/profile.py). All makers and products are fictional.
 #
-# k = how many products below still fit every attribute the sent queries have revealed.
-# If a draft would push k under the policy's k_min while our own product (`target`) still fits,
-# the guard blocks it. A query that rules our product out ("LFP cells ...") reveals nothing
-# about it, however small the crowd gets.
+# k = how many products below still fit every attribute the sent queries have revealed about
+# our own product (`target`). Terms that rule our product out ("LFP cells ...") reveal nothing
+# about it and are ignored. If a draft would push k under the policy's k_min, the guard blocks it.
 #
 # Dev split only (Halden HX-9 + 15 others). Test-split companies get their own catalog, kept
 # out of the repo with the rest of the test split.
@@ -14,8 +13,12 @@ attributes:
   cathode:
     "NCM811": [NCM811]
     "NCM 811": [NCM811]
+    "NMC811": [NCM811]
+    "NMC 811": [NCM811]
     "NCM88": [NCM88]
     "NCM 88": [NCM88]
+    "NMC88": [NCM88]
+    "NMC 88": [NCM88]
     "high-nickel": [NCM811, NCM88, NCA]
     "high nickel": [NCM811, NCM88, NCA]
     "Ni-rich": [NCM811, NCM88, NCA]

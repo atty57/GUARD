@@ -11,12 +11,18 @@ Tier 0, the value firewall, blocks a draft that states a secret outright:
 - ``unit_change``: the same value in another unit ("0.272 kWh/kg", "1018 K", "720 min").
 - ``identifier``: a name secret or one of its aliases ("Ostrava", "3Q27").
 
-Tier 1, the disclosure ledger (guard/ledger.py), blocks bounds and ranges ("above 250",
-"260-280 Wh/kg") that, alone or with the queries already sent, narrow a secret past its policy
-limits (``range`` / ``split``). Tier 2 (LLM rewrite) comes later; until then a hit is a
-redraftable block.
+Tier 1 looks at the whole session (``history`` = queries that actually left):
 
-Reasons never contain the secret value: they are shown in the UI and written to run logs.
+- the disclosure ledger (guard/ledger.py) blocks bounds and ranges ("above 250",
+  "260-280 Wh/kg") that, alone or with earlier queries, narrow a secret past its policy limits
+  or settle which side of a legal threshold it is on (``range`` / ``split``);
+- the profile check (guard/profile.py) blocks a draft that would leave fewer than ``k_min``
+  candidate products fitting what has been revealed about ours (``intent_profile``).
+
+Tier 2 (LLM rewrite) comes later; until then a hit is a block, normally ``redraftable``.
+
+Reasons name the secret id and the kind of leak, never the matched text or the value: they are
+shown in the UI and written to run logs.
 """
 
 from __future__ import annotations
@@ -82,11 +88,6 @@ class GuardResult(_M):
 
 # --- Tier 0 ----------------------------------------------------------------------------------
 
-# A bare percentage says nothing about *which* percentage. For fraction-unit secrets, Tier 0
-# only fires when the query also names the attribute; otherwise "95% confidence" would hit the
-# yield secret. Shared with the ledger (guard/ledger.py: CONTEXT).
-
-
 def _step(s: SecretSpec, uid: str) -> float:
     """Half the secret's resolution, in canonical units."""
     return (s.resolution or 0.0) / 2 * (to_canonical(1, uid) - to_canonical(0, uid))
@@ -104,6 +105,8 @@ def _point_hits(policy: Policy, s: SecretSpec, quantities: list[Quantity], text:
         return
     fam = family(sid)
     secret = to_canonical(float(s.value), sid)
+    # A bare percentage says nothing about *which* percentage: fraction units only count when
+    # the query names the attribute, or "95% confidence" would hit the yield secret.
     if fam == "fraction" and not ledger.applies(s, text):
         return
     tol = _tolerance(policy, s, sid, secret)
@@ -117,7 +120,7 @@ def _point_hits(policy: Policy, s: SecretSpec, quantities: list[Quantity], text:
         if public is not None and abs(q.lo - public) <= half_step:
             continue
         if abs(q.lo - secret) <= tol:
-            yield ("exact_value" if q.unit == sid else "unit_change"), q.text
+            yield "exact_value" if q.unit == sid else "unit_change"
 
 
 def _alias_hits(s: SecretSpec, text: str):
@@ -126,7 +129,7 @@ def _alias_hits(s: SecretSpec, text: str):
         forms.insert(0, str(s.value))
     for f in forms:
         if re.search(rf"(?<![A-Za-z0-9]){re.escape(f)}(?![A-Za-z0-9])", text, re.I):
-            yield ("identifier" if s.kind == "name" else "exact_value"), f
+            yield "identifier" if s.kind == "name" else "exact_value"
 
 
 def tier0(draft: str, policy: Policy) -> tuple[list[str], list[str], list[str]]:
@@ -142,10 +145,11 @@ def tier0(draft: str, policy: Policy) -> tuple[list[str], list[str], list[str]]:
         if not hits:
             continue
         touched.append(s.secret_id)
-        for lt, span in hits:
+        for lt in dict.fromkeys(hits):
             if lt not in leak_types:
                 leak_types.append(lt)
-            reasons.append(f"{s.secret_id} ({s.dim}): '{span}' states the protected value")
+            how = {"unit_change": " in another unit", "identifier": " or an alias"}.get(lt, "")
+            reasons.append(f"{s.secret_id} ({s.dim}): this query states the protected value{how}")
     return leak_types, touched, reasons
 
 
@@ -202,17 +206,19 @@ async def check(draft: str, history: list[SentQuery] | list[dict], policy: Polic
     kind = "redraftable"
     if pf is not None and pf.violates:
         leak_types.append("intent_profile")
-        terms = ", ".join(repr(t) for t in pf.new_terms)
-        reasons.append(f"profile: with {terms}, only {pf.k_after} candidate product(s) fit "
-                       f"what has been sent (k_min {pf.k_min})")
+        attrs = ", ".join(pf.new_attrs)
+        reasons.append(f"profile: adding {attrs} leaves {pf.k_after} candidate product(s) "
+                       f"fitting what has been sent (k_min {pf.k_min})")
         if not pf.satisfiable and not touched:
             kind = "unsatisfiable"   # already under k_min: no redraft can add detail safely
-    prof = profile.proposal(pf) if pf is not None else None
-
     if touched or (pf is not None and pf.violates):
+        # nothing from a blocked draft goes out, so every preview is "prevented" (INTERFACES §3)
         return GuardResult(action="block", query=None, tier=1, block_kind=kind,
                            leak_types=leak_types, secrets_touched=touched, reasons=reasons,
-                           latency_ms=latency, profile=prof,
-                           intervals=[ledger.proposal(policy, f, "original") for f in findings])
-    return GuardResult(action="pass", query=draft, tier=0, latency_ms=latency, profile=prof,
+                           latency_ms=latency,
+                           profile=profile.proposal(pf, blocked=True) if pf else None,
+                           intervals=[ledger.proposal(policy, f, "original", blocked=True)
+                                      for f in findings])
+    return GuardResult(action="pass", query=draft, tier=0, latency_ms=latency,
+                       profile=profile.proposal(pf) if pf else None,
                        intervals=[ledger.proposal(policy, f, "final") for f in findings])

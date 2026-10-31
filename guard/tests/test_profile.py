@@ -45,9 +45,18 @@ def test_unsatisfiable_when_history_is_already_under_k_min(policy):
     assert f.k_before == 6 and f.violates and not f.satisfiable
 
 
-def test_ruling_our_product_out_is_not_a_leak(policy):
+def test_terms_that_rule_our_product_out_reveal_nothing(policy):
     (r,) = session(["LFP cells around 160 Wh/kg cost"], policy)
-    assert r.action == "pass" and r.profile["k"] == 1
+    assert r.action == "pass" and r.profile is None
+
+
+@pytest.mark.parametrize("earlier", ["LFP prismatic cell cost comparison",
+                                     "cylindrical cells benchmark", "SOP 2028 platforms"])
+def test_off_target_history_does_not_switch_the_check_off(policy, earlier):
+    # an earlier query about other products must not hide a later profile leak about ours
+    _, r = session([earlier, "high-nickel pouch cell Si-graphite anode European OEM SOP 2027"],
+                   policy)
+    assert r.action == "block" and r.leak_types == ["intent_profile"] and r.profile["k"] == 2
 
 
 def test_single_query_profile(policy):
@@ -57,14 +66,16 @@ def test_single_query_profile(policy):
 
 def test_region_needs_market_context(policy):
     cat = load_catalog(policy.profile_catalog)
-    assert "region" not in revealed_by(cat, "Korean national core technology list 265 Wh/kg")
-    assert revealed_by(cat, "Korean OEM battery supplier")["region"][0] == "Korean"
+    assert "region" not in revealed_by(cat, "European Commission battery regulation 2023")
+    assert revealed_by(cat, "European OEM battery supplier")["region"][0] == "European"
 
 
 def test_narrowest_term_wins(policy):
     cat = load_catalog(policy.profile_catalog)
-    term, covered = revealed_by(cat, "high-nickel NCM811 pouch")["cathode"]
-    assert term == "NCM811" and covered == {"NCM811"}
+    term, covered = revealed_by(cat, "high-nickel NCM88 pouch")["cathode"]
+    assert term == "NCM88" and covered == {"NCM88"}
+    # NCM811 is not our cathode, so only the broader true term counts
+    assert revealed_by(cat, "high-nickel NCM811 pouch")["cathode"][0] == "high-nickel"
 
 
 def test_repeating_known_attributes_is_not_new_narrowing(policy):
@@ -89,3 +100,10 @@ def test_profile_fits_the_event_schema(policy):
     for r in session(["high-nickel pouch cell suppliers Europe", "silicon anode cells SOP 2027"],
                      policy):
         ProfileUpdateData.model_validate({**r.profile, "committed": False})
+
+
+def test_profile_reason_names_attributes_not_terms(policy):
+    _, r = session(["high-nickel pouch cell suppliers Europe", "silicon anode cells SOP 2027"],
+                   policy)
+    assert r.reasons == ["profile: adding anode, sop_year leaves 2 candidate product(s) "
+                         "fitting what has been sent (k_min 5)"]
