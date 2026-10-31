@@ -72,7 +72,7 @@ Leak types use the frozen `LeakType` vocabulary (INTERFACES §3).
 | ID | Property | Enforced by | Tested in |
 | --- | --- | --- | --- |
 | P1 | No dispatched query states a protected value within `bound_tol`, in its own unit or another, for the number and unit forms Tier 0 parses (fraction units only when the attribute is named) | Tier 0 | `guard/tests/test_check.py` |
-| P2 | For each numeric secret, the interval implied by all dispatched bounds that hold for its value stays at least the effective min width, within the bits budget, and doesn't settle which side of a threshold the value is on | Tier 1 ledger | `guard/tests/test_ledger.py` |
+| P2 | For each numeric secret, the interval implied by all dispatched bounds that hold for its value, or miss it by less than half the effective min width, stays at least the min width, within the bits budget, and doesn't settle which side of a threshold the value is on | Tier 1 ledger | `guard/tests/test_ledger.py` |
 | P3 | Fail closed: a guard exception is a block; a blocked draft is never dispatched and never enters the history | agent graph + guard | `agent/tests/test_graph.py` (`test_guard_exception_counts_as_block`, `test_block_at_cap_skips_and_never_searches`, `test_sent_queries_subset_of_approved`) |
 | P4 | Separation: the guard reads the policy and catalog only; the agent reads docs; the observer reads dispatched queries only; test-split secrets stay out of the repo | repo layout, DATA_SPEC §7 | graph state has no ground-truth field (`agent/tests/test_graph.py::test_state_has_no_ground_truth_field`); the rest by layout |
 | P5 | Guard `reasons` name the secret id and leak type only, never the matched text or the value | guard | `guard/tests/test_check.py::test_reasons_never_contain_the_secret` |
@@ -84,7 +84,7 @@ Event logs are inside the boundary: `guard_decision.original` records the blocke
 
 | Assumption | Consequence | How we handle it |
 | --- | --- | --- |
-| Worst-case observer: every bound in a query that holds for our value is taken to describe the secret | Over-blocking of harmless bounds | Report false-positive rate on benign queries next to leakage |
+| Every bound within half a min width of our value is taken to describe the secret; bounds further off are about other products | Over-blocking of near-miss bounds (e.g. "below 250 Wh/kg" against 272 settles the threshold side); a bound far off our value is never counted | Report false-positive rate on benign queries next to leakage |
 | `bits` treats every value in the prior as equally likely | `bits` is an approximation; a real observer may know more | Reported leakage is the LLM observer's gain over its zero-query baseline (PLAN §10; DATA_SPEC §8 check 8); ledger `bits` is the live meter only |
 | Priors and min widths are design choices (DATA_SPEC §2) | Results depend on them | `tau` sweep (one knob scales all min widths and the bits budget) |
 | All queries in a run are linkable; the ledger is per run | Leaks spread across separate sessions are not tracked | Out of scope (§7) |
@@ -94,6 +94,7 @@ Event logs are inside the boundary: `guard_decision.original` records the blocke
 ## 7. Out of scope
 
 - An adaptive attacker who knows the guard's rules and searches for phrasings that pass. We report what the evaluation shows; we don't claim robustness to it.
+- Blocks depend on the secret, so a query that never appears can itself be a clue (e.g. an injected page making the agent sweep ranges while the attacker reads the query log). Not defended.
 - Aggregation across separate sessions or agents.
 - Side channels: number, timing or size of queries.
 - What the search provider sends back (inbound), beyond injected instructions (A2).
