@@ -161,3 +161,6 @@ venv/
 # Project data (rebuilt by scripts)
 *.db
 corpus/raw/
+
+# Live runs saved by the API (local; `git add -f` one if the team needs it)
+runs/live/
