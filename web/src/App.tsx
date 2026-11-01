@@ -11,15 +11,21 @@ import { RunSummary } from '@/components/RunSummary'
 
 
 // One recorded run, as listed by GET /api/replay.
-type RunInfo = { name: string; lanes: Lane[]; synthetic: boolean }
+// recorded_at is only set for real recordings (runs/live/), not hand-written fixtures.
+type RunInfo = { name: string; lanes: Lane[]; synthetic: boolean; recorded_at: string | null }
+
+// Replay = play back a recorded run. Live = actually run the agent now (GET /api/live/stream).
+type Mode = 'replay' | 'live'
 
 function App() {
   const [status, setStatus] = useState('checking...')
   const [events, setEvents] = useState<RunEvent[]>([])
   const [running, setRunning] = useState(false)
   const [runs, setRuns] = useState<RunInfo[]>([])
-  const [playing, setPlaying] = useState<RunInfo | null>(null) // the run currently on screen
+  // What is on screen: a recorded run, a live run happening now, or nothing yet.
+  const [playing, setPlaying] = useState<RunInfo | 'live' | null>(null)
   const [selected, setSelected] = useState('compare_run')
+  const [mode, setMode] = useState<Mode>('replay')
   const sourceRef = useRef<EventSource | null>(null)
 
   useEffect(() => {
@@ -27,23 +33,38 @@ function App() {
       .then((res) => res.json())
       .then((data) => setStatus(data.status))
       .catch(() => setStatus('backend not reachable'))
+  }, [])
 
-    // Which recorded runs can be replayed.
+  // Which recorded runs can be replayed. Loaded on start and again each time a run finishes,
+  // so a live run that was just saved shows up in the picker right away.
+  useEffect(() => {
+    if (running) return
     fetch('/api/replay')
       .then((res) => res.json())
       .then((data: { runs: RunInfo[] }) => setRuns(data.runs))
       .catch(() => setRuns([]))
-  }, [])
+  }, [running])
 
   useEffect(() => () => sourceRef.current?.close(), [])
 
   function startReplay() {
     setPlaying(runs.find((r) => r.name === selected) ?? null)
+    startStream(`/api/replay/${encodeURIComponent(selected)}/stream`)
+  }
+
+  function startLive() {
+    setPlaying('live')
+    startStream('/api/live/stream?task=demo')
+  }
+
+  // Live and replay send the exact same moat.v2 events, so one handler serves both;
+  // only the URL differs.
+  function startStream(url: string) {
     sourceRef.current?.close()
     setEvents([])
     setRunning(true)
 
-    const source = new EventSource(`/api/replay/${encodeURIComponent(selected)}/stream`)
+    const source = new EventSource(url)
     sourceRef.current = source
     const announced = new Set<Lane>()
     const completed = new Set<Lane>()
@@ -98,9 +119,16 @@ function App() {
   // ["moat"]). If nothing is known yet, show both so the empty layout still makes sense.
   const announced = lanes.baseline.started?.lanes ?? lanes.moat.started?.lanes
     // Before the stream says, use the lanes the backend listed for the selected run.
-    ?? runs.find((r) => r.name === selected)?.lanes
+    // (Live runs always have both lanes, so they fall through to "show both".)
+    ?? (mode === 'replay' ? runs.find((r) => r.name === selected)?.lanes : undefined)
   const shown = { baseline: announced ? announced.includes('baseline') : true,
                   moat: announced ? announced.includes('moat') : true }
+  // Where a live run stands, for the banner: still running, finished, failed, or cut off.
+  const shownLanes = [lanes.baseline, lanes.moat].filter((l) => l.started)
+  const liveStatus: LiveStatus = running ? 'running'
+    : shownLanes.length > 0 && shownLanes.every((l) => l.complete)
+      ? (shownLanes.some((l) => l.complete?.status === 'failed') ? 'failed' : 'completed')
+      : 'stopped'
   const hasProfile = Boolean(lanes.baseline.profile || lanes.moat.profile)
   const hopNumbers = [...new Set([...lanes.baseline.hops, ...lanes.moat.hops].map((h) => h.hop))].sort((a, b) => a - b)
 
@@ -115,33 +143,53 @@ function App() {
         </div>
         <div className="flex items-center gap-3">
           <Badge variant={status === 'ok' ? 'secondary' : 'destructive'}>backend: {status}</Badge>
-          <label className="sr-only" htmlFor="run-picker">Recorded run</label>
-          <select
-            id="run-picker"
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-            disabled={running}
-            className="h-8 rounded-lg border bg-background px-2 text-sm"
-          >
-            {(runs.length ? runs.map((r) => r.name) : [selected]).map((name) => (
-              <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>
+          {/* Live / Replay toggle. Locked while a run is streaming. */}
+          <div role="group" aria-label="Run mode" className="flex rounded-lg border p-0.5">
+            {(['replay', 'live'] as const).map((m) => (
+              <Button
+                key={m}
+                size="sm"
+                variant={mode === m ? 'secondary' : 'ghost'}
+                aria-pressed={mode === m}
+                disabled={running}
+                onClick={() => setMode(m)}
+              >
+                {m === 'replay' ? 'Replay' : 'Live'}
+              </Button>
             ))}
-          </select>
-          <Button onClick={startReplay} disabled={running}>
-            {running ? 'Replaying…' : 'Replay'}
-          </Button>
+          </div>
+          {mode === 'replay' ? (
+            <>
+              <label className="sr-only" htmlFor="run-picker">Recorded run</label>
+              <select
+                id="run-picker"
+                value={selected}
+                onChange={(e) => setSelected(e.target.value)}
+                disabled={running}
+                className="h-8 rounded-lg border bg-background px-2 text-sm"
+              >
+                {(runs.length ? runs.map((r) => r.name) : [selected]).map((name) => (
+                  <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>
+                ))}
+              </select>
+              <Button onClick={startReplay} disabled={running}>
+                {running ? 'Replaying…' : 'Replay'}
+              </Button>
+            </>
+          ) : (
+            <Button onClick={startLive} disabled={running}>
+              {running ? 'Running…' : 'Run live'}
+            </Button>
+          )}
         </div>
       </header>
 
       <main className="flex flex-col gap-6 p-8">
-        {playing?.synthetic && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-sm">
-            <Badge className="bg-sky-500/20 text-sky-300">Synthetic fixture replay</Badge>
-            <span className="text-muted-foreground">
-              Hand-written test data for “{playing.name.replace(/_/g, ' ')}”, not a recording of a real agent run.
-            </span>
-          </div>
-        )}
+        <SourceBanner
+          playing={playing}
+          liveStatus={liveStatus}
+          modelReplay={Boolean(lanes.moat.started?.replay ?? lanes.baseline.started?.replay)}
+        />
 
         {/* Each Row puts the baseline item on the left and the MOAT item on the right,
             so matching cards always sit at the same height. */}
@@ -152,7 +200,11 @@ function App() {
         />
 
         {!started && (
-          <p className="text-sm text-muted-foreground">Pick a recorded run and press “Replay” to start.</p>
+          <p className="text-sm text-muted-foreground">
+            {mode === 'replay'
+              ? 'Pick a recorded run and press “Replay” to start.'
+              : 'Press “Run live” to run the agent now on the demo task, with and without MOAT.'}
+          </p>
         )}
 
         {started && (
@@ -188,6 +240,56 @@ function App() {
           <Row shown={shown} left={<ReportSlot lane={lanes.baseline} />} right={<ReportSlot lane={lanes.moat} />} />
         )}
       </main>
+    </div>
+  )
+}
+
+// One line above the lanes saying where this run comes from, so nobody mistakes a recording
+// (or hand-written test data) for the agent running right now.
+type LiveStatus = 'running' | 'completed' | 'failed' | 'stopped'
+
+function SourceBanner({ playing, liveStatus, modelReplay }: {
+  playing: RunInfo | 'live' | null
+  liveStatus: LiveStatus
+  modelReplay: boolean
+}) {
+  if (playing === null) return null
+
+  let badge: string, text: string, color: string
+  if (playing === 'live') {
+    badge = 'Live run'
+    text = {
+      running: 'The agent is running now on the demo task.',
+      completed: 'Live run completed on the demo task.',
+      failed: 'Live run finished with a failure on the demo task.',
+      stopped: 'Live run stopped before finishing.',
+    }[liveStatus]
+    // Be upfront when the model's answers come from a saved recording (no API key).
+    if (modelReplay) text += ' Model answers come from a saved recording, so no API key is needed.'
+    color = 'emerald'
+  } else if (playing.synthetic) {
+    badge = 'Synthetic fixture replay'
+    text = `Hand-written test data for “${playing.name.replace(/_/g, ' ')}”, not a recording of a real agent run.`
+    color = 'sky'
+  } else {
+    const when = playing.recorded_at
+      ? new Date(playing.recorded_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+      : 'earlier'
+    badge = 'Replay'
+    text = `Replay of a live run recorded ${when}. Nothing is running now.`
+    color = 'violet'
+  }
+
+  // Full class names written out so Tailwind keeps them in the build.
+  const styles: Record<string, { box: string; badge: string }> = {
+    emerald: { box: 'border-emerald-500/40 bg-emerald-500/10', badge: 'bg-emerald-500/20 text-emerald-300' },
+    sky: { box: 'border-sky-500/40 bg-sky-500/10', badge: 'bg-sky-500/20 text-sky-300' },
+    violet: { box: 'border-violet-500/40 bg-violet-500/10', badge: 'bg-violet-500/20 text-violet-300' },
+  }
+  return (
+    <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-4 py-2 text-sm ${styles[color].box}`}>
+      <Badge className={styles[color].badge}>{badge}</Badge>
+      <span className="text-muted-foreground">{text}</span>
     </div>
   )
 }
