@@ -54,7 +54,19 @@ export function HopCard({ hop }: { hop: HopView }) {
 
         {/* Contract: an error before dispatch counts as blocked; after dispatch the query did leave. */}
         {hop.errors.map((err, i) =>
-          err.dispatched ? (
+          err.replayMiss ? (
+            // No saved model answer for this step: explain it, keep the raw error as a tooltip.
+            <div key={i} title={err.message} className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <p className="font-medium text-amber-400">
+                {err.dispatched
+                  ? 'Query was sent, then the run stopped: no saved model answer for the next step'
+                  : 'Stopped before sending: no saved model answer for this step'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                The saved model answers don't match the agent's current prompts.
+              </p>
+            </div>
+          ) : err.dispatched ? (
             <div key={i} className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
               <p className="font-medium text-amber-400">Query was sent, but the {err.where} step failed</p>
               <p className="mt-1 text-xs text-muted-foreground">{err.message}</p>

@@ -129,19 +129,22 @@ function App() {
     : shownLanes.length > 0 && shownLanes.every((l) => l.complete)
       ? (shownLanes.some((l) => l.complete?.status === 'failed') ? 'failed' : 'completed')
       : 'stopped'
+  const runLabels = useMemo(() => pickerLabels(runs), [runs])
   const hasProfile = Boolean(lanes.baseline.profile || lanes.moat.profile)
   const hopNumbers = [...new Set([...lanes.baseline.hops, ...lanes.moat.hops].map((h) => h.hop))].sort((a, b) => a - b)
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="flex items-center justify-between border-b px-8 py-4">
+      {/* flex-wrap: in a narrow window the controls move to a second line instead of
+          squeezing the title. */}
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b px-8 py-4">
         <div>
           <h1 className="text-xl font-semibold">MOAT Guard</h1>
           <p className="text-sm text-muted-foreground">
             What a research agent's searches reveal, with and without the guard
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Badge variant={status === 'ok' ? 'secondary' : 'destructive'}>backend: {status}</Badge>
           {/* Live / Replay toggle. Locked while a run is streaming. */}
           <div role="group" aria-label="Run mode" className="flex rounded-lg border p-0.5">
@@ -166,11 +169,12 @@ function App() {
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
                 disabled={running}
-                className="h-8 rounded-lg border bg-background px-2 text-sm"
+                title={selected} // the file name, on hover
+                className="h-8 max-w-64 truncate rounded-lg border bg-background px-2 text-sm"
               >
-                {(runs.length ? runs.map((r) => r.name) : [selected]).map((name) => (
-                  <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>
-                ))}
+                {runs.length
+                  ? runs.map((r) => <option key={r.name} value={r.name}>{runLabels[r.name]}</option>)
+                  : <option value={selected}>{selected.replace(/_/g, ' ')}</option>}
               </select>
               <Button onClick={startReplay} disabled={running}>
                 {running ? 'Replaying…' : 'Replay'}
@@ -189,6 +193,7 @@ function App() {
           playing={playing}
           liveStatus={liveStatus}
           modelReplay={Boolean(lanes.moat.started?.replay ?? lanes.baseline.started?.replay)}
+          replayMiss={Boolean(lanes.baseline.replayMiss || lanes.moat.replayMiss)}
         />
 
         {/* Each Row puts the baseline item on the left and the MOAT item on the right,
@@ -244,14 +249,38 @@ function App() {
   )
 }
 
+// How each run is named in the picker. Real recordings get their time ("Live run · Oct 31,
+// 8:43:56 PM") instead of the long file name. Two runs started in the same second would get
+// the same label, so those also get the short id at the end of their file name.
+function pickerLabels(runs: RunInfo[]): Record<string, string> {
+  const labels = runs.map(runLabel)
+  const out: Record<string, string> = {}
+  runs.forEach((r, i) => {
+    const repeated = labels.filter((l) => l === labels[i]).length > 1
+    out[r.name] = repeated ? `${labels[i]} · ${r.name.split('_').at(-1)}` : labels[i]
+  })
+  return out
+}
+
+function runLabel(run: RunInfo): string {
+  if (!run.synthetic && run.recorded_at) {
+    const when = new Date(run.recorded_at).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit',
+    })
+    return `Live run · ${when}`
+  }
+  return run.name.replace(/_/g, ' ')
+}
+
 // One line above the lanes saying where this run comes from, so nobody mistakes a recording
 // (or hand-written test data) for the agent running right now.
 type LiveStatus = 'running' | 'completed' | 'failed' | 'stopped'
 
-function SourceBanner({ playing, liveStatus, modelReplay }: {
+function SourceBanner({ playing, liveStatus, modelReplay, replayMiss }: {
   playing: RunInfo | 'live' | null
   liveStatus: LiveStatus
   modelReplay: boolean
+  replayMiss: boolean
 }) {
   if (playing === null) return null
 
@@ -267,6 +296,14 @@ function SourceBanner({ playing, liveStatus, modelReplay }: {
     // Be upfront when the model's answers come from a saved recording (no API key).
     if (modelReplay) text += ' Model answers come from a saved recording, so no API key is needed.'
     color = 'emerald'
+    if (replayMiss) {
+      // The recording is out of date (the agent's prompts changed)
+      badge = 'Live run stopped'
+      text = 'The saved model answers don\'t match the agent\'s current prompts, so the run stopped at the '
+        + 'first model step without one. Searches and guard checks up to that point did run. To finish a '
+        + 'live run, re-record the answers or run with an API key. Replays still work.'
+      color = 'amber'
+    }
   } else if (playing.synthetic) {
     badge = 'Synthetic fixture replay'
     text = `Hand-written test data for “${playing.name.replace(/_/g, ' ')}”, not a recording of a real agent run.`
@@ -285,6 +322,7 @@ function SourceBanner({ playing, liveStatus, modelReplay }: {
     emerald: { box: 'border-emerald-500/40 bg-emerald-500/10', badge: 'bg-emerald-500/20 text-emerald-300' },
     sky: { box: 'border-sky-500/40 bg-sky-500/10', badge: 'bg-sky-500/20 text-sky-300' },
     violet: { box: 'border-violet-500/40 bg-violet-500/10', badge: 'bg-violet-500/20 text-violet-300' },
+    amber: { box: 'border-amber-500/40 bg-amber-500/10', badge: 'bg-amber-500/20 text-amber-300' },
   }
   return (
     <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-4 py-2 text-sm ${styles[color].box}`}>
@@ -338,6 +376,9 @@ function LaneHeading({ title, lane, waiting }: { title: string; lane: LaneView; 
 function LaneStatus({ lane, waiting }: { lane: LaneView; waiting: boolean }) {
   if (lane.complete) {
     const failed = lane.complete.status === 'failed'
+    if (failed && lane.replayMiss) {
+      return <p className="text-sm text-amber-400">Stopped: no saved model answer</p>
+    }
     return (
       <p className={`text-sm ${failed ? 'text-red-400' : 'text-muted-foreground'}`}>
         {failed ? 'Run failed' : 'Done'}

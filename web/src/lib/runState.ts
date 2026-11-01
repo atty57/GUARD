@@ -13,7 +13,8 @@ export type HopView = {
   intervals: SecretIntervalUpdateEvent['data'][]
   search?: SearchResultsEvent['data']
   skipped?: { reason: string; detail: string }
-  errors: { where: string; message: string; dispatched: boolean }[]
+  // replayMiss: the model step had no saved answer (see LaneView.replayMiss).
+  errors: { where: string; message: string; dispatched: boolean; replayMiss?: boolean }[]
   injections: { doc_id: string; pattern: string; action: string }[]
 }
 
@@ -25,6 +26,10 @@ export type LaneView = {
   observer: ObserverEstimateEvent['data'][]
   report: string                                  // report_chunk texts joined
   complete?: RunCompleteEvent['data']
+  // The run used saved model answers (run_started.replay) and the model step failed, which
+  // means no saved answer matched the request. Happens whenever the agent's prompts change
+  // after the answers were recorded, so the UI explains it instead of showing a raw error.
+  replayMiss?: boolean
 }
 
 const emptyLane = (): LaneView => ({ hops: [], observer: [], report: '' })
@@ -55,7 +60,12 @@ export function buildLanes(events: RunEvent[]): Record<Lane, LaneView> {
       case 'secret_interval_update': hopFor(lane, e.hop!).intervals.push(e.data); break
       case 'search_results': hopFor(lane, e.hop!).search = e.data; break
       case 'hop_skipped': hopFor(lane, e.hop!).skipped = e.data; break
-      case 'error': hopFor(lane, e.hop ?? 0).errors.push(e.data); break
+      case 'error': {
+        const miss = e.data.where === 'model' && Boolean(lane.started?.replay)
+        if (miss) lane.replayMiss = true
+        hopFor(lane, e.hop ?? 0).errors.push({ ...e.data, replayMiss: miss })
+        break
+      }
       case 'injection_detected': hopFor(lane, e.hop!).injections.push(e.data); break
       // The UI shows committed exposure only; a preview must never look revealed.
       case 'profile_update': if (e.data.committed) lane.profile = e.data; break
