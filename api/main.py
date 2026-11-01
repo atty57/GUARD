@@ -1,5 +1,6 @@
 import asyncio
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -119,11 +120,14 @@ async def live_stream(task: str):
     # ".jsonl" only once the run has finished, so a run cut off halfway (tab closed, server
     # stopped) never shows up in the replay list looking like a complete recording.
     LIVE_DIR.mkdir(parents=True, exist_ok=True)
-    name = f"live_{task}_{datetime.now():%Y-%m-%d_%H%M%S}"
+    # The group id makes the name unique, so two runs started in the same second never share
+    # a file (or a .part file). The same id goes into the run's events.
+    group_id = uuid.uuid4().hex
+    name = f"live_{task}_{datetime.now():%Y-%m-%d_%H%M%S}_{group_id[:8]}"
     part = LIVE_DIR / f"{name}.jsonl.part"
     with part.open("w", encoding="utf-8") as recording:
         async for event in stream_group(task, ["none", "moat"], guard=moat_guard,
-                                        client=client, policy=policy):
+                                        client=client, policy=policy, group_id=group_id):
             # Same one-event-per-line format as the fixtures, so replay reads it unchanged.
             recording.write(event.model_dump_json(by_alias=True) + "\n")
             recording.flush()
