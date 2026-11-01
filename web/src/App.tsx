@@ -123,6 +123,12 @@ function App() {
     ?? (mode === 'replay' ? runs.find((r) => r.name === selected)?.lanes : undefined)
   const shown = { baseline: announced ? announced.includes('baseline') : true,
                   moat: announced ? announced.includes('moat') : true }
+  // Where a live run stands, for the banner: still running, finished, failed, or cut off.
+  const shownLanes = [lanes.baseline, lanes.moat].filter((l) => l.started)
+  const liveStatus: LiveStatus = running ? 'running'
+    : shownLanes.length > 0 && shownLanes.every((l) => l.complete)
+      ? (shownLanes.some((l) => l.complete?.status === 'failed') ? 'failed' : 'completed')
+      : 'stopped'
   const hasProfile = Boolean(lanes.baseline.profile || lanes.moat.profile)
   const hopNumbers = [...new Set([...lanes.baseline.hops, ...lanes.moat.hops].map((h) => h.hop))].sort((a, b) => a - b)
 
@@ -179,7 +185,11 @@ function App() {
       </header>
 
       <main className="flex flex-col gap-6 p-8">
-        <SourceBanner playing={playing} modelReplay={Boolean(lanes.moat.started?.replay ?? lanes.baseline.started?.replay)} />
+        <SourceBanner
+          playing={playing}
+          liveStatus={liveStatus}
+          modelReplay={Boolean(lanes.moat.started?.replay ?? lanes.baseline.started?.replay)}
+        />
 
         {/* Each Row puts the baseline item on the left and the MOAT item on the right,
             so matching cards always sit at the same height. */}
@@ -236,13 +246,24 @@ function App() {
 
 // One line above the lanes saying where this run comes from, so nobody mistakes a recording
 // (or hand-written test data) for the agent running right now.
-function SourceBanner({ playing, modelReplay }: { playing: RunInfo | 'live' | null; modelReplay: boolean }) {
+type LiveStatus = 'running' | 'completed' | 'failed' | 'stopped'
+
+function SourceBanner({ playing, liveStatus, modelReplay }: {
+  playing: RunInfo | 'live' | null
+  liveStatus: LiveStatus
+  modelReplay: boolean
+}) {
   if (playing === null) return null
 
   let badge: string, text: string, color: string
   if (playing === 'live') {
     badge = 'Live run'
-    text = 'The agent is running now on the demo task.'
+    text = {
+      running: 'The agent is running now on the demo task.',
+      completed: 'Live run completed on the demo task.',
+      failed: 'Live run finished with a failure on the demo task.',
+      stopped: 'Live run stopped before finishing.',
+    }[liveStatus]
     // Be upfront when the model's answers come from a saved recording (no API key).
     if (modelReplay) text += ' Model answers come from a saved recording, so no API key is needed.'
     color = 'emerald'
