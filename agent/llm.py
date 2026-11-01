@@ -133,6 +133,16 @@ class LLMClient:
                     f"no recording for request key {key[:12]}... in {self.record_path}")
             return _to_completion(cache[key])
 
+        # G4: bound a single call's worst case so one response can't blow the per-run cap.
+        # Output tokens dominate price and are the only unbounded term (input is our prompt).
+        max_tokens = kwargs.get("max_tokens")
+        if max_tokens is not None:
+            projected = self.cost_usd + max_tokens * _PRICE_OUT / 1e6
+            if projected > self.max_usd:
+                raise BudgetExceeded(
+                    f"projected ${projected:.4f} (accrued ${self.cost_usd:.4f} + "
+                    f"{max_tokens} out tok) > cap ${self.max_usd:.4f}; refusing call")
+
         resp = await self._sdk().chat.completions.create(**request)
         self.tokens_in += _field(resp.usage, "prompt_tokens")
         self.tokens_out += _field(resp.usage, "completion_tokens")
