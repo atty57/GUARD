@@ -160,6 +160,7 @@ function App() {
     setPlaying(null)
   }
 
+  const bothLanes = shown.baseline && shown.moat
   const hasProfile = Boolean(lanes.baseline.profile || lanes.moat.profile)
   const hopNumbers = [...new Set([...lanes.baseline.hops, ...lanes.moat.hops].map((h) => h.hop))].sort((a, b) => a - b)
 
@@ -222,10 +223,14 @@ function App() {
           modelReplay={Boolean(lanes.moat.started?.replay ?? lanes.baseline.started?.replay)}
         />
 
-        {/* Each Row puts the baseline item on the left and the MOAT item on the right,
-            so matching cards always sit at the same height. */}
+        {/* One grid holds every Row. Wide screens: two columns, baseline left and MOAT right,
+            so matching cards sit side by side. Narrow screens: one column, lane by lane (all of
+            the left lane, then all of the MOAT lane), so every card sits under its lane's title.
+            See Row below for how the order is switched. */}
+        <div className={bothLanes ? 'grid grid-cols-1 gap-6 lg:grid-cols-2' : 'mx-auto grid w-full max-w-4xl grid-cols-1 gap-6'}>
         <Row
           shown={shown}
+          startsLane
           left={
             <LaneHeading
               title={LANE_TITLE[lanes.baseline.started?.condition ?? baselineChoice]}
@@ -238,14 +243,6 @@ function App() {
           }
           right={<LaneHeading title={LANE_TITLE[lanes.moat.started?.condition ?? 'moat']} lane={lanes.moat} waiting={running} />}
         />
-
-        {!started && (
-          <p className="text-sm text-muted-foreground">
-            {mode === 'replay'
-              ? 'Pick a recorded run and press “Replay” to start.'
-              : 'Press “Run live” to run the agent now on the demo task, with and without MOAT.'}
-          </p>
-        )}
 
         {started && (
           <Row shown={shown} left={<RunSummary lane={lanes.baseline} />} right={<RunSummary lane={lanes.moat} />} />
@@ -278,6 +275,15 @@ function App() {
 
         {(lanes.baseline.report || lanes.moat.report) && (
           <Row shown={shown} left={<ReportSlot lane={lanes.baseline} />} right={<ReportSlot lane={lanes.moat} />} />
+        )}
+        </div>
+
+        {!started && (
+          <p className="text-sm text-muted-foreground">
+            {mode === 'replay'
+              ? 'Pick a recorded run and press “Replay” to start.'
+              : 'Press “Run live” to run the agent now on the demo task, with and without MOAT.'}
+          </p>
         )}
       </main>
     </div>
@@ -334,19 +340,27 @@ function SourceBanner({ playing, liveStatus, modelReplay }: {
   )
 }
 
-// Puts the baseline item on the left and the MOAT item on the right, so matching cards line up.
-// A run with only one lane gets a single column instead of an empty half.
-function Row({ left, right, shown }: {
+// One baseline item and its matching MOAT item. Both go straight into the shared grid in App.
+// - Wide (lg): `lg:order-none` keeps the written order, so each pair fills one row: left, right.
+// - Narrow: `order-1` / `order-2` make the grid show every left item first, then every right
+//   item. Same elements, no duplicated code; only the display order changes.
+// startsLane: the MOAT heading gets a divider on narrow screens, where it starts its lane.
+// Placeholders ("No search in this hop") only exist to keep the two columns lined up, so on
+// narrow screens their cell is hidden (`has-[>[data-placeholder]]:hidden`).
+// A run with only one lane just shows that lane's items.
+function Row({ left, right, shown, startsLane = false }: {
   left: React.ReactNode
   right: React.ReactNode
   shown: { baseline: boolean; moat: boolean }
+  startsLane?: boolean
 }) {
-  const both = shown.baseline && shown.moat
+  const divider = startsLane && shown.baseline ? 'mt-4 border-t pt-8 lg:mt-0 lg:border-t-0 lg:pt-0' : ''
+  const cell = 'min-w-0 lg:order-none has-[>[data-placeholder]]:hidden lg:has-[>[data-placeholder]]:block'
   return (
-    <div className={both ? 'grid grid-cols-1 gap-6 lg:grid-cols-2' : 'mx-auto w-full max-w-4xl'}>
-      {shown.baseline && <div className="min-w-0">{left}</div>}
-      {shown.moat && <div className="min-w-0">{right}</div>}
-    </div>
+    <>
+      {shown.baseline && <div className={`order-1 ${cell}`}>{left}</div>}
+      {shown.moat && <div className={`order-2 ${cell} ${divider}`}>{right}</div>}
+    </>
   )
 }
 
@@ -423,9 +437,10 @@ function LaneStatus({ lane, waiting }: { lane: LaneView; waiting: boolean }) {
 }
 
 // Placeholders keep the rows lined up when only one lane has something to show.
+// data-placeholder lets Row hide the whole grid cell on narrow screens (see Row).
 function Placeholder({ text }: { text: string }) {
   return (
-    <div className="flex h-full min-h-16 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
+    <div data-placeholder className="flex h-full min-h-16 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
       {text}
     </div>
   )
