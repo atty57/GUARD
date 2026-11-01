@@ -17,6 +17,16 @@ type RunInfo = { name: string; lanes: Lane[]; synthetic: boolean; recorded_at: s
 // Replay = play back a recorded run. Live = actually run the agent now (GET /api/live/stream).
 type Mode = 'replay' | 'live'
 
+// The left lane can run as No guard ("none") or Prompt only ("prompt": the agent is told not to
+// disclose secrets, but nothing checks its queries). A recorded run's Prompt-only twin has the
+// same name plus "_prompt", e.g. compare_run -> compare_run_prompt.
+type Baseline = 'none' | 'prompt'
+const LANE_TITLE: Record<string, string> = {
+  none: 'No guard', prompt: 'Prompt only', moat: 'With MOAT', moat_prompt: 'MOAT + prompt',
+}
+const PROMPT_SUFFIX = '_prompt'
+const baseName = (name: string) => (name.endsWith(PROMPT_SUFFIX) ? name.slice(0, -PROMPT_SUFFIX.length) : name)
+
 function App() {
   const [status, setStatus] = useState('checking...')
   const [events, setEvents] = useState<RunEvent[]>([])
@@ -26,6 +36,7 @@ function App() {
   const [playing, setPlaying] = useState<RunInfo | 'live' | null>(null)
   const [selected, setSelected] = useState('compare_run')
   const [mode, setMode] = useState<Mode>('replay')
+  const [liveBaseline, setLiveBaseline] = useState<Baseline>('none') // left lane for the next live run
   const sourceRef = useRef<EventSource | null>(null)
 
   useEffect(() => {
@@ -54,7 +65,7 @@ function App() {
 
   function startLive() {
     setPlaying('live')
-    startStream('/api/live/stream?task=demo')
+    startStream(`/api/live/stream?task=demo&baseline=${liveBaseline}`)
   }
 
   // Live and replay send the exact same moat.v2 events, so one handler serves both;
@@ -129,6 +140,26 @@ function App() {
     : shownLanes.length > 0 && shownLanes.every((l) => l.complete)
       ? (shownLanes.some((l) => l.complete?.status === 'failed') ? 'failed' : 'completed')
       : 'stopped'
+  // Left-lane dropdown (No guard / Prompt only).
+  // Replay: only offered when the selected run has a Prompt-only twin in the list.
+  // Live: always offered; it sets the left lane's condition for the next run.
+  const twinExists = runs.some((r) => r.name === baseName(selected))
+    && runs.some((r) => r.name === baseName(selected) + PROMPT_SUFFIX)
+  const showBaselineChoice = mode === 'live' || twinExists
+  // What the dropdown shows: the run on screen if there is one, otherwise the next run.
+  const onScreen = lanes.baseline.started?.condition
+  const baselineChoice: Baseline = onScreen === 'none' || onScreen === 'prompt' ? onScreen
+    : mode === 'live' ? liveBaseline
+    : selected.endsWith(PROMPT_SUFFIX) ? 'prompt' : 'none'
+
+  function chooseBaseline(next: Baseline) {
+    if (mode === 'live') setLiveBaseline(next)
+    else setSelected(baseName(selected) + (next === 'prompt' ? PROMPT_SUFFIX : ''))
+    // Clear the old run so the lane title never describes a run that isn't on screen.
+    setEvents([])
+    setPlaying(null)
+  }
+
   const hasProfile = Boolean(lanes.baseline.profile || lanes.moat.profile)
   const hopNumbers = [...new Set([...lanes.baseline.hops, ...lanes.moat.hops].map((h) => h.hop))].sort((a, b) => a - b)
 
@@ -195,8 +226,17 @@ function App() {
             so matching cards always sit at the same height. */}
         <Row
           shown={shown}
-          left={<LaneHeading title="No guard" lane={lanes.baseline} waiting={running} />}
-          right={<LaneHeading title="With MOAT" lane={lanes.moat} waiting={running} />}
+          left={
+            <LaneHeading
+              title={LANE_TITLE[lanes.baseline.started?.condition ?? baselineChoice]}
+              lane={lanes.baseline}
+              waiting={running}
+              choice={showBaselineChoice
+                ? { value: baselineChoice, onChange: chooseBaseline, disabled: running }
+                : undefined}
+            />
+          }
+          right={<LaneHeading title={LANE_TITLE[lanes.moat.started?.condition ?? 'moat']} lane={lanes.moat} waiting={running} />}
         />
 
         {!started && (
@@ -322,11 +362,33 @@ const NODE_LABEL: Record<string, string> = {
   generate_report: 'Writing the report',
 }
 
-function LaneHeading({ title, lane, waiting }: { title: string; lane: LaneView; waiting: boolean }) {
+function LaneHeading({ title, lane, waiting, choice }: {
+  title: string
+  lane: LaneView
+  waiting: boolean
+  // When set, the title is a dropdown to swap the left lane between No guard and Prompt only.
+  choice?: { value: Baseline; onChange: (next: Baseline) => void; disabled: boolean }
+}) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">{title}</h2>
+        {choice ? (
+          <h2 className="text-lg font-semibold">
+            <label className="sr-only" htmlFor="baseline-choice">Left lane condition</label>
+            <select
+              id="baseline-choice"
+              value={choice.value}
+              onChange={(e) => choice.onChange(e.target.value as Baseline)}
+              disabled={choice.disabled}
+              className="-ml-1 rounded-md border bg-background px-1 py-0.5 font-semibold"
+            >
+              <option value="none">{LANE_TITLE.none}</option>
+              <option value="prompt">{LANE_TITLE.prompt}</option>
+            </select>
+          </h2>
+        ) : (
+          <h2 className="text-lg font-semibold">{title}</h2>
+        )}
         {lane.started && <Badge variant="outline">condition: {lane.started.condition}</Badge>}
       </div>
       <LaneStatus lane={lane} waiting={waiting} />
