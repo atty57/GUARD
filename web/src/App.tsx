@@ -189,6 +189,7 @@ function App() {
           playing={playing}
           liveStatus={liveStatus}
           modelReplay={Boolean(lanes.moat.started?.replay ?? lanes.baseline.started?.replay)}
+          replayMiss={Boolean(lanes.baseline.replayMiss || lanes.moat.replayMiss)}
         />
 
         {/* Each Row puts the baseline item on the left and the MOAT item on the right,
@@ -248,10 +249,11 @@ function App() {
 // (or hand-written test data) for the agent running right now.
 type LiveStatus = 'running' | 'completed' | 'failed' | 'stopped'
 
-function SourceBanner({ playing, liveStatus, modelReplay }: {
+function SourceBanner({ playing, liveStatus, modelReplay, replayMiss }: {
   playing: RunInfo | 'live' | null
   liveStatus: LiveStatus
   modelReplay: boolean
+  replayMiss: boolean
 }) {
   if (playing === null) return null
 
@@ -267,6 +269,14 @@ function SourceBanner({ playing, liveStatus, modelReplay }: {
     // Be upfront when the model's answers come from a saved recording (no API key).
     if (modelReplay) text += ' Model answers come from a saved recording, so no API key is needed.'
     color = 'emerald'
+    if (replayMiss) {
+      // The recording is out of date (the agent's prompts changed)
+      badge = 'Live run stopped'
+      text = 'The saved model answers don\'t match the agent\'s current prompts, so the run stopped at the '
+        + 'first model step without one. Searches and guard checks up to that point did run. To finish a '
+        + 'live run, re-record the answers or run with an API key. Replays still work.'
+      color = 'amber'
+    }
   } else if (playing.synthetic) {
     badge = 'Synthetic fixture replay'
     text = `Hand-written test data for “${playing.name.replace(/_/g, ' ')}”, not a recording of a real agent run.`
@@ -285,6 +295,7 @@ function SourceBanner({ playing, liveStatus, modelReplay }: {
     emerald: { box: 'border-emerald-500/40 bg-emerald-500/10', badge: 'bg-emerald-500/20 text-emerald-300' },
     sky: { box: 'border-sky-500/40 bg-sky-500/10', badge: 'bg-sky-500/20 text-sky-300' },
     violet: { box: 'border-violet-500/40 bg-violet-500/10', badge: 'bg-violet-500/20 text-violet-300' },
+    amber: { box: 'border-amber-500/40 bg-amber-500/10', badge: 'bg-amber-500/20 text-amber-300' },
   }
   return (
     <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-4 py-2 text-sm ${styles[color].box}`}>
@@ -338,6 +349,9 @@ function LaneHeading({ title, lane, waiting }: { title: string; lane: LaneView; 
 function LaneStatus({ lane, waiting }: { lane: LaneView; waiting: boolean }) {
   if (lane.complete) {
     const failed = lane.complete.status === 'failed'
+    if (failed && lane.replayMiss) {
+      return <p className="text-sm text-amber-400">Stopped: no saved model answer</p>
+    }
     return (
       <p className={`text-sm ${failed ? 'text-red-400' : 'text-muted-foreground'}`}>
         {failed ? 'Run failed' : 'Done'}
