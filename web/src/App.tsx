@@ -129,19 +129,22 @@ function App() {
     : shownLanes.length > 0 && shownLanes.every((l) => l.complete)
       ? (shownLanes.some((l) => l.complete?.status === 'failed') ? 'failed' : 'completed')
       : 'stopped'
+  const runLabels = useMemo(() => pickerLabels(runs), [runs])
   const hasProfile = Boolean(lanes.baseline.profile || lanes.moat.profile)
   const hopNumbers = [...new Set([...lanes.baseline.hops, ...lanes.moat.hops].map((h) => h.hop))].sort((a, b) => a - b)
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="flex items-center justify-between border-b px-8 py-4">
+      {/* flex-wrap: in a narrow window the controls move to a second line instead of
+          squeezing the title. */}
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b px-8 py-4">
         <div>
           <h1 className="text-xl font-semibold">MOAT Guard</h1>
           <p className="text-sm text-muted-foreground">
             What a research agent's searches reveal, with and without the guard
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Badge variant={status === 'ok' ? 'secondary' : 'destructive'}>backend: {status}</Badge>
           {/* Live / Replay toggle. Locked while a run is streaming. */}
           <div role="group" aria-label="Run mode" className="flex rounded-lg border p-0.5">
@@ -166,11 +169,12 @@ function App() {
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
                 disabled={running}
-                className="h-8 rounded-lg border bg-background px-2 text-sm"
+                title={selected} // the file name, on hover
+                className="h-8 max-w-64 truncate rounded-lg border bg-background px-2 text-sm"
               >
-                {(runs.length ? runs.map((r) => r.name) : [selected]).map((name) => (
-                  <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>
-                ))}
+                {runs.length
+                  ? runs.map((r) => <option key={r.name} value={r.name}>{runLabels[r.name]}</option>)
+                  : <option value={selected}>{selected.replace(/_/g, ' ')}</option>}
               </select>
               <Button onClick={startReplay} disabled={running}>
                 {running ? 'Replaying…' : 'Replay'}
@@ -243,6 +247,29 @@ function App() {
       </main>
     </div>
   )
+}
+
+// How each run is named in the picker. Real recordings get their time ("Live run · Oct 31,
+// 8:43:56 PM") instead of the long file name. Two runs started in the same second would get
+// the same label, so those also get the short id at the end of their file name.
+function pickerLabels(runs: RunInfo[]): Record<string, string> {
+  const labels = runs.map(runLabel)
+  const out: Record<string, string> = {}
+  runs.forEach((r, i) => {
+    const repeated = labels.filter((l) => l === labels[i]).length > 1
+    out[r.name] = repeated ? `${labels[i]} · ${r.name.split('_').at(-1)}` : labels[i]
+  })
+  return out
+}
+
+function runLabel(run: RunInfo): string {
+  if (!run.synthetic && run.recorded_at) {
+    const when = new Date(run.recorded_at).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit',
+    })
+    return `Live run · ${when}`
+  }
+  return run.name.replace(/_/g, ' ')
 }
 
 // One line above the lanes saying where this run comes from, so nobody mistakes a recording
