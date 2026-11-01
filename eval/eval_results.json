@@ -1,0 +1,748 @@
+{
+  "schema": "moat.eval.v1",
+  "placeholder": true,
+  "generated_at": "2026-11-01T00:00:00Z",
+  "split": "test",
+  "n_tasks": 20,
+  "n_seeds": 1,
+  "corpus_sha": "sha256:placeholder",
+  "policy_hash": "sha256:placeholder",
+  "models": {
+    "agent": "muse-spark-1.3",
+    "observer": "TBD",
+    "judge": "TBD"
+  },
+  "conditions": [
+    {
+      "condition": "none",
+      "tau": 1.0,
+      "n_runs": 20,
+      "leakage": {
+        "numeric_gain": {
+          "mean": 0.31,
+          "ci95": [
+            0.26,
+            0.36
+          ]
+        },
+        "width_ratio": {
+          "mean": 0.22,
+          "ci95": [
+            0.16,
+            0.28
+          ]
+        },
+        "bits": {
+          "mean": 6.4,
+          "ci95": [
+            5.6,
+            7.2
+          ]
+        },
+        "hit_within_2pct": {
+          "mean": 0.28,
+          "ci95": [
+            0.22,
+            0.34
+          ]
+        },
+        "categorical_gain": {
+          "mean": 0.35,
+          "ci95": [
+            0.28,
+            0.42
+          ]
+        },
+        "intent_similarity": {
+          "mean": 0.74,
+          "ci95": [
+            0.69,
+            0.79
+          ]
+        }
+      },
+      "utility": {
+        "citation_recall": {
+          "mean": 0.58,
+          "ci95": [
+            0.51,
+            0.65
+          ]
+        },
+        "rubric": {
+          "mean": 0.71,
+          "ci95": [
+            0.66,
+            0.76
+          ]
+        }
+      },
+      "flow": {
+        "queries_per_run": 8.0,
+        "block_rate": 0.0,
+        "rewrite_rate": 0.0,
+        "skip_rate": 0.0
+      }
+    },
+    {
+      "condition": "prompt",
+      "tau": 1.0,
+      "n_runs": 20,
+      "leakage": {
+        "numeric_gain": {
+          "mean": 0.24,
+          "ci95": [
+            0.19,
+            0.29
+          ]
+        },
+        "width_ratio": {
+          "mean": 0.3,
+          "ci95": [
+            0.24,
+            0.36
+          ]
+        },
+        "bits": {
+          "mean": 5.1,
+          "ci95": [
+            4.3,
+            5.9
+          ]
+        },
+        "hit_within_2pct": {
+          "mean": 0.19,
+          "ci95": [
+            0.13,
+            0.25
+          ]
+        },
+        "categorical_gain": {
+          "mean": 0.25,
+          "ci95": [
+            0.18,
+            0.32
+          ]
+        },
+        "intent_similarity": {
+          "mean": 0.7,
+          "ci95": [
+            0.65,
+            0.75
+          ]
+        }
+      },
+      "utility": {
+        "citation_recall": {
+          "mean": 0.56,
+          "ci95": [
+            0.49,
+            0.63
+          ]
+        },
+        "rubric": {
+          "mean": 0.7,
+          "ci95": [
+            0.65,
+            0.75
+          ]
+        }
+      },
+      "flow": {
+        "queries_per_run": 8.0,
+        "block_rate": 0.0,
+        "rewrite_rate": 0.0,
+        "skip_rate": 0.0
+      }
+    },
+    {
+      "condition": "moat",
+      "tau": 1.0,
+      "n_runs": 20,
+      "leakage": {
+        "numeric_gain": {
+          "mean": 0.07,
+          "ci95": [
+            0.02,
+            0.12
+          ]
+        },
+        "width_ratio": {
+          "mean": 0.71,
+          "ci95": [
+            0.65,
+            0.77
+          ]
+        },
+        "bits": {
+          "mean": 1.6,
+          "ci95": [
+            0.8,
+            2.4
+          ]
+        },
+        "hit_within_2pct": {
+          "mean": 0.03,
+          "ci95": [
+            -0.03,
+            0.09
+          ]
+        },
+        "categorical_gain": {
+          "mean": 0.05,
+          "ci95": [
+            -0.02,
+            0.12
+          ]
+        },
+        "intent_similarity": {
+          "mean": 0.52,
+          "ci95": [
+            0.47,
+            0.57
+          ]
+        }
+      },
+      "utility": {
+        "citation_recall": {
+          "mean": 0.51,
+          "ci95": [
+            0.44,
+            0.58
+          ]
+        },
+        "rubric": {
+          "mean": 0.66,
+          "ci95": [
+            0.61,
+            0.71
+          ]
+        }
+      },
+      "flow": {
+        "queries_per_run": 8.0,
+        "block_rate": 0.18,
+        "rewrite_rate": 0.0,
+        "skip_rate": 0.06
+      }
+    },
+    {
+      "condition": "moat_prompt",
+      "tau": 1.0,
+      "n_runs": 20,
+      "leakage": {
+        "numeric_gain": {
+          "mean": 0.05,
+          "ci95": [
+            0.0,
+            0.1
+          ]
+        },
+        "width_ratio": {
+          "mean": 0.76,
+          "ci95": [
+            0.7,
+            0.82
+          ]
+        },
+        "bits": {
+          "mean": 1.3,
+          "ci95": [
+            0.5,
+            2.1
+          ]
+        },
+        "hit_within_2pct": {
+          "mean": 0.02,
+          "ci95": [
+            -0.04,
+            0.08
+          ]
+        },
+        "categorical_gain": {
+          "mean": 0.04,
+          "ci95": [
+            -0.03,
+            0.11
+          ]
+        },
+        "intent_similarity": {
+          "mean": 0.49,
+          "ci95": [
+            0.44,
+            0.54
+          ]
+        }
+      },
+      "utility": {
+        "citation_recall": {
+          "mean": 0.5,
+          "ci95": [
+            0.43,
+            0.57
+          ]
+        },
+        "rubric": {
+          "mean": 0.66,
+          "ci95": [
+            0.61,
+            0.71
+          ]
+        }
+      },
+      "flow": {
+        "queries_per_run": 8.0,
+        "block_rate": 0.12,
+        "rewrite_rate": 0.0,
+        "skip_rate": 0.04
+      }
+    }
+  ],
+  "tau_sweep": [
+    {
+      "condition": "moat",
+      "tau": 0.5,
+      "n_runs": 20,
+      "leakage": {
+        "numeric_gain": {
+          "mean": 0.12,
+          "ci95": [
+            0.07,
+            0.17
+          ]
+        },
+        "width_ratio": {
+          "mean": 0.58,
+          "ci95": [
+            0.52,
+            0.64
+          ]
+        },
+        "bits": {
+          "mean": 2.4,
+          "ci95": [
+            1.6,
+            3.2
+          ]
+        },
+        "hit_within_2pct": {
+          "mean": 0.07,
+          "ci95": [
+            0.01,
+            0.13
+          ]
+        },
+        "categorical_gain": {
+          "mean": 0.08,
+          "ci95": [
+            0.01,
+            0.15
+          ]
+        },
+        "intent_similarity": {
+          "mean": 0.58,
+          "ci95": [
+            0.53,
+            0.63
+          ]
+        }
+      },
+      "utility": {
+        "citation_recall": {
+          "mean": 0.55,
+          "ci95": [
+            0.48,
+            0.62
+          ]
+        },
+        "rubric": {
+          "mean": 0.69,
+          "ci95": [
+            0.64,
+            0.74
+          ]
+        }
+      },
+      "flow": {
+        "queries_per_run": 8.0,
+        "block_rate": 0.1,
+        "rewrite_rate": 0.0,
+        "skip_rate": 0.03
+      }
+    },
+    {
+      "condition": "moat",
+      "tau": 0.75,
+      "n_runs": 20,
+      "leakage": {
+        "numeric_gain": {
+          "mean": 0.09,
+          "ci95": [
+            0.04,
+            0.14
+          ]
+        },
+        "width_ratio": {
+          "mean": 0.65,
+          "ci95": [
+            0.59,
+            0.71
+          ]
+        },
+        "bits": {
+          "mean": 2.0,
+          "ci95": [
+            1.2,
+            2.8
+          ]
+        },
+        "hit_within_2pct": {
+          "mean": 0.05,
+          "ci95": [
+            -0.01,
+            0.11
+          ]
+        },
+        "categorical_gain": {
+          "mean": 0.06,
+          "ci95": [
+            -0.01,
+            0.13
+          ]
+        },
+        "intent_similarity": {
+          "mean": 0.55,
+          "ci95": [
+            0.5,
+            0.6
+          ]
+        }
+      },
+      "utility": {
+        "citation_recall": {
+          "mean": 0.53,
+          "ci95": [
+            0.46,
+            0.6
+          ]
+        },
+        "rubric": {
+          "mean": 0.68,
+          "ci95": [
+            0.63,
+            0.73
+          ]
+        }
+      },
+      "flow": {
+        "queries_per_run": 8.0,
+        "block_rate": 0.14,
+        "rewrite_rate": 0.0,
+        "skip_rate": 0.04
+      }
+    },
+    {
+      "condition": "moat",
+      "tau": 1.0,
+      "n_runs": 20,
+      "leakage": {
+        "numeric_gain": {
+          "mean": 0.07,
+          "ci95": [
+            0.02,
+            0.12
+          ]
+        },
+        "width_ratio": {
+          "mean": 0.71,
+          "ci95": [
+            0.65,
+            0.77
+          ]
+        },
+        "bits": {
+          "mean": 1.6,
+          "ci95": [
+            0.8,
+            2.4
+          ]
+        },
+        "hit_within_2pct": {
+          "mean": 0.03,
+          "ci95": [
+            -0.03,
+            0.09
+          ]
+        },
+        "categorical_gain": {
+          "mean": 0.05,
+          "ci95": [
+            -0.02,
+            0.12
+          ]
+        },
+        "intent_similarity": {
+          "mean": 0.52,
+          "ci95": [
+            0.47,
+            0.57
+          ]
+        }
+      },
+      "utility": {
+        "citation_recall": {
+          "mean": 0.51,
+          "ci95": [
+            0.44,
+            0.58
+          ]
+        },
+        "rubric": {
+          "mean": 0.66,
+          "ci95": [
+            0.61,
+            0.71
+          ]
+        }
+      },
+      "flow": {
+        "queries_per_run": 8.0,
+        "block_rate": 0.18,
+        "rewrite_rate": 0.0,
+        "skip_rate": 0.06
+      }
+    },
+    {
+      "condition": "moat",
+      "tau": 1.5,
+      "n_runs": 20,
+      "leakage": {
+        "numeric_gain": {
+          "mean": 0.05,
+          "ci95": [
+            0.0,
+            0.1
+          ]
+        },
+        "width_ratio": {
+          "mean": 0.78,
+          "ci95": [
+            0.72,
+            0.84
+          ]
+        },
+        "bits": {
+          "mean": 1.2,
+          "ci95": [
+            0.4,
+            2.0
+          ]
+        },
+        "hit_within_2pct": {
+          "mean": 0.02,
+          "ci95": [
+            -0.04,
+            0.08
+          ]
+        },
+        "categorical_gain": {
+          "mean": 0.04,
+          "ci95": [
+            -0.03,
+            0.11
+          ]
+        },
+        "intent_similarity": {
+          "mean": 0.48,
+          "ci95": [
+            0.43,
+            0.53
+          ]
+        }
+      },
+      "utility": {
+        "citation_recall": {
+          "mean": 0.47,
+          "ci95": [
+            0.4,
+            0.54
+          ]
+        },
+        "rubric": {
+          "mean": 0.63,
+          "ci95": [
+            0.58,
+            0.68
+          ]
+        }
+      },
+      "flow": {
+        "queries_per_run": 8.0,
+        "block_rate": 0.25,
+        "rewrite_rate": 0.0,
+        "skip_rate": 0.09
+      }
+    },
+    {
+      "condition": "moat",
+      "tau": 2.0,
+      "n_runs": 20,
+      "leakage": {
+        "numeric_gain": {
+          "mean": 0.04,
+          "ci95": [
+            -0.01,
+            0.09
+          ]
+        },
+        "width_ratio": {
+          "mean": 0.83,
+          "ci95": [
+            0.77,
+            0.89
+          ]
+        },
+        "bits": {
+          "mean": 0.9,
+          "ci95": [
+            0.1,
+            1.7
+          ]
+        },
+        "hit_within_2pct": {
+          "mean": 0.01,
+          "ci95": [
+            -0.05,
+            0.07
+          ]
+        },
+        "categorical_gain": {
+          "mean": 0.03,
+          "ci95": [
+            -0.04,
+            0.1
+          ]
+        },
+        "intent_similarity": {
+          "mean": 0.45,
+          "ci95": [
+            0.4,
+            0.5
+          ]
+        }
+      },
+      "utility": {
+        "citation_recall": {
+          "mean": 0.42,
+          "ci95": [
+            0.35,
+            0.49
+          ]
+        },
+        "rubric": {
+          "mean": 0.59,
+          "ci95": [
+            0.54,
+            0.64
+          ]
+        }
+      },
+      "flow": {
+        "queries_per_run": 8.0,
+        "block_rate": 0.33,
+        "rewrite_rate": 0.0,
+        "skip_rate": 0.14
+      }
+    }
+  ],
+  "attacks": [
+    {
+      "leak_type": "exact_value",
+      "n": 25,
+      "recall": 0.96
+    },
+    {
+      "leak_type": "unit_change",
+      "n": 25,
+      "recall": 0.92
+    },
+    {
+      "leak_type": "identifier",
+      "n": 25,
+      "recall": 0.96
+    },
+    {
+      "leak_type": "range",
+      "n": 25,
+      "recall": 0.84
+    },
+    {
+      "leak_type": "split",
+      "n": 25,
+      "recall": 0.8
+    },
+    {
+      "leak_type": "intent_profile",
+      "n": 25,
+      "recall": 0.72
+    }
+  ],
+  "benign": {
+    "n": 150,
+    "false_positive_rate": 0.06
+  },
+  "comparisons": [
+    {
+      "metric": "leakage.numeric_gain",
+      "a": "moat",
+      "b": "none",
+      "test": "wilcoxon",
+      "effect": -0.24,
+      "p_value": 0.001,
+      "p_holm": 0.004
+    },
+    {
+      "metric": "leakage.numeric_gain",
+      "a": "moat",
+      "b": "prompt",
+      "test": "wilcoxon",
+      "effect": -0.17,
+      "p_value": 0.003,
+      "p_holm": 0.006
+    },
+    {
+      "metric": "leakage.categorical_gain",
+      "a": "moat",
+      "b": "none",
+      "test": "mcnemar",
+      "effect": -0.3,
+      "p_value": 0.002,
+      "p_holm": 0.006
+    },
+    {
+      "metric": "utility.citation_recall",
+      "a": "moat",
+      "b": "none",
+      "test": "wilcoxon",
+      "effect": -0.07,
+      "p_value": 0.21,
+      "p_holm": 0.21
+    }
+  ],
+  "latency_ms": {
+    "tier0": {
+      "p50": 0.4,
+      "p95": 1.1
+    },
+    "tier1": {
+      "p50": 1.8,
+      "p95": 4.5
+    },
+    "total": {
+      "p50": 2.3,
+      "p95": 5.6
+    }
+  },
+  "tier2_escalation_rate": 0.0,
+  "cost_usd": 0.0
+}
