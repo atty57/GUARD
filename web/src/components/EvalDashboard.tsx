@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import type { EvalResults } from '@/evalTypes'
 import { Badge } from '@/components/ui/badge'
 import { ConditionsTable } from '@/components/ConditionsTable'
+import { HeadlineChart } from '@/components/HeadlineChart'
 
 // What the screen can be showing: still loading, an error message, or the results.
 type Load = { state: 'loading' } | { state: 'error'; message: string } | { state: 'ready'; data: EvalResults }
@@ -57,6 +58,7 @@ export function EvalDashboard() {
         </p>
       </div>
 
+      <HeadlineChart conditions={r.conditions} sweep={r.tau_sweep} />
       <ConditionsTable conditions={r.conditions} />
     </main>
   )
