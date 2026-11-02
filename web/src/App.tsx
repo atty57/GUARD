@@ -8,6 +8,23 @@ import { HopCard } from '@/components/HopCard'
 import { LeakMeter, type SecretLimit } from '@/components/LeakMeter'
 import { ProductProfile } from '@/components/ProductProfile'
 import { RunSummary } from '@/components/RunSummary'
+import { EvalDashboard } from '@/components/EvalDashboard'
+
+// Two screens: Compare (one run, side by side) and Results (the experiment numbers).
+// The screen lives in the address (#results), so the back button works and a link can open
+// the dashboard directly. Anything other than #results is the Compare screen.
+type Screen = 'compare' | 'results'
+const screenFromHash = (): Screen => (window.location.hash === '#results' ? 'results' : 'compare')
+
+function useScreen(): Screen {
+  const [screen, setScreen] = useState<Screen>(screenFromHash)
+  useEffect(() => {
+    const onChange = () => setScreen(screenFromHash())
+    window.addEventListener('hashchange', onChange)
+    return () => window.removeEventListener('hashchange', onChange)
+  }, [])
+  return screen
+}
 
 
 // One recorded run, as listed by GET /api/replay.
@@ -18,6 +35,7 @@ type RunInfo = { name: string; lanes: Lane[]; synthetic: boolean; recorded_at: s
 type Mode = 'replay' | 'live'
 
 function App() {
+  const screen = useScreen()
   const [status, setStatus] = useState('checking...')
   const [events, setEvents] = useState<RunEvent[]>([])
   const [running, setRunning] = useState(false)
@@ -138,14 +156,30 @@ function App() {
       {/* flex-wrap: in a narrow window the controls move to a second line instead of
           squeezing the title. */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b px-8 py-4">
-        <div>
-          <h1 className="text-xl font-semibold">MOAT Guard</h1>
-          <p className="text-sm text-muted-foreground">
-            What a research agent's searches reveal, with and without the guard
-          </p>
+        <div className="flex flex-wrap items-center gap-6">
+          <div>
+            <h1 className="text-xl font-semibold">MOAT Guard</h1>
+            <p className="text-sm text-muted-foreground">
+              What a research agent's searches reveal, with and without the guard
+            </p>
+          </div>
+          {/* Screen tabs. Plain links: clicking one changes the #hash, and useScreen follows it. */}
+          <nav aria-label="Screens" className="flex rounded-lg border p-0.5 text-sm">
+            {([['compare', 'Compare'], ['results', 'Results']] as const).map(([id, label]) => (
+              <a
+                key={id}
+                href={`#${id}`}
+                aria-current={screen === id ? 'page' : undefined}
+                className={`rounded-md px-3 py-1 font-medium ${screen === id ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant={status === 'ok' ? 'secondary' : 'destructive'}>backend: {status}</Badge>
+          {screen === 'compare' && (<>
           {/* Live / Replay toggle. Locked while a run is streaming. */}
           <div role="group" aria-label="Run mode" className="flex rounded-lg border p-0.5">
             {(['replay', 'live'] as const).map((m) => (
@@ -185,9 +219,12 @@ function App() {
               {running ? 'Running…' : 'Run live'}
             </Button>
           )}
+          </>)}
         </div>
       </header>
 
+      {/* The Compare screen's state (the run on screen) is kept while you look at Results. */}
+      {screen === 'results' ? <EvalDashboard /> : (
       <main className="flex flex-col gap-6 p-8">
         <SourceBanner
           playing={playing}
@@ -245,6 +282,7 @@ function App() {
           <Row shown={shown} left={<ReportSlot lane={lanes.baseline} />} right={<ReportSlot lane={lanes.moat} />} />
         )}
       </main>
+      )}
     </div>
   )
 }
