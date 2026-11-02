@@ -27,7 +27,9 @@ from agent.graph import (
     GuardResult,
     ResearchState,
     StubGuard,
+    _call_seed,
     _chat_completion,
+    _token_ladder,
     collect,
     stream_group,
 )
@@ -351,3 +353,226 @@ async def test_zero_queries_still_reports():
     assert _by_type(events, "search_results") == []
     assert _by_type(events, "report_chunk"), "a report must still be generated with no results"
     check_stream(events, "zero-queries-report")
+
+
+# --- G2 seed-range regression (keyless) --------------------------------------------------------
+# The Meta API rejects a seed outside the nonnegative signed 32-bit range 0..2147483647. The old
+# derivation took the top 8 hex of a SHA-256 (reaching 0xFFFFFFFF), so ~half of all per-call seeds
+# were out of range and the live call failed. _call_seed masks with 0x7FFFFFFF; these lock that in.
+_INT32_MAX = 2147483647
+
+
+def test_call_seed_stays_in_signed_int32_including_previously_rejected():
+    # Exhaustively sweep representative call coordinates; every seed must be API-acceptable.
+    for task in ("halden-t1", "halden-t5", "demo"):
+        for seed_index in (0, 1, 7):
+            for role in ("draft", "reflect", "report"):
+                for hop in range(6):
+                    for attempt in range(4):
+                        s = _call_seed(task, seed_index, role, hop, attempt)
+                        assert isinstance(s, int) and 0 <= s <= _INT32_MAX, (
+                            task, seed_index, role, hop, attempt, s)
+    # A coordinate whose pre-fix seed was 2853632783 (> 2**31-1) — exactly the case the API used to
+    # reject — now maps into range by masking off the high bit.
+    assert _call_seed("halden-t1", 0, "reflect", 0, 0) == 2853632783 & _INT32_MAX == 706149135
+    # seed_index None keeps back-compat (omit the seed entirely).
+    assert _call_seed("halden-t1", None, "draft", 1, 0) is None
+
+
+def test_call_seed_is_condition_independent_so_matched_calls_pair():
+    # _call_seed takes no condition: none vs moat at the same (task, seed_index, role, hop, attempt)
+    # issue the identical seed, which is what makes a condition pair sample identically (G2).
+    coord = ("halden-t1", 0, "draft", 1, 0)
+    assert _call_seed(*coord) == _call_seed(*coord)        # deterministic
+    assert "condition" not in _call_seed.__code__.co_varnames
+
+
+def test_call_seed_differs_across_hops_roles_and_redraft_attempts():
+    base = _call_seed("halden-t1", 0, "draft", 1, 0)
+    assert _call_seed("halden-t1", 0, "draft", 2, 0) != base      # different hop
+    assert _call_seed("halden-t1", 0, "reflect", 1, 0) != base    # different role
+    assert _call_seed("halden-t1", 0, "draft", 1, 1) != base      # different redraft attempt
+    # a batch of distinct coordinates should give distinct seeds (no systematic collisions).
+    seeds = {_call_seed("halden-t1", 0, r, h, a)
+             for r in ("draft", "reflect", "report") for h in range(5) for a in range(3)}
+    assert len(seeds) == 3 * 5 * 3
+
+
+# --- empty model response is rejected loudly (keyless) -----------------------------------------
+# muse-spark-1.3 can exhaust max_tokens on hidden reasoning and return the exact shape the pilot
+# recorded: message.content=None with finish_reason='length'. The graph must fail loud (naming the
+# node + finish_reason), never .strip() a None or let an empty draft reach guard/search.
+def _empty_completion():
+    return _chat_completion(None, finish_reason="length")   # the recorded truncated response
+
+
+class _EmptyAtClient:
+    """Canned responses, except the named node's call returns the recorded empty completion."""
+
+    model, mode = "muse-spark-1.3", "fake"
+
+    def __init__(self, empty_role: str) -> None:            # 'draft' | 'reflect' | 'report'
+        self.empty_role = empty_role
+
+    async def complete(self, **kwargs):
+        from agent.graph import _canned_text
+
+        text = " ".join(m["content"] for m in kwargs["messages"]).lower()
+        role = "draft" if "search query" in text else "report" if "report" in text else "reflect"
+        if role == self.empty_role:
+            return _empty_completion()
+        return _chat_completion(_canned_text(kwargs["messages"]))
+
+
+async def test_empty_draft_fails_before_guard_and_search():
+    events = await collect("demo", "moat", client=_EmptyAtClient("draft"),
+                           policy=load_policy(_POLICY))
+    err = _by_type(events, "error")[-1]
+    assert "draft_query" in err.data.message and "length" in err.data.message
+    assert events[-1].type == "run_complete" and events[-1].data.status == "failed"
+    assert _by_type(events, "guard_decision") == [], "empty draft must not reach the guard"
+    assert _by_type(events, "search_results") == [], "empty draft must not reach search"
+    assert events[-1].data.sent == 0
+
+
+async def test_empty_reflection_is_rejected():
+    events = await collect("demo", "none", client=_EmptyAtClient("reflect"),
+                           policy=load_policy(_POLICY))
+    err = _by_type(events, "error")[-1]
+    assert "reflect" in err.data.message and "length" in err.data.message
+    assert events[-1].data.status == "failed"
+
+
+async def test_empty_report_is_rejected():
+    events = await collect("demo", "none", client=_EmptyAtClient("report"),
+                           policy=load_policy(_POLICY))
+    err = _by_type(events, "error")[-1]
+    assert "generate_report" in err.data.message and "length" in err.data.message
+    assert events[-1].data.status == "failed"
+    assert _by_type(events, "report_chunk") == [], "no report chunk emitted when report is empty"
+
+
+# --- GEN_RETRY_POLICY: one bounded 4k->8k retry on truncation (keyless) ------------------------
+class _TruncateThenSucceedClient:
+    """Returns the recorded truncated shape while max_tokens <= limit, else canned text.
+    Records (seed, max_tokens) per call to verify the paired seed survives the retry."""
+
+    model, mode = "muse-spark-1.3", "fake"
+
+    def __init__(self, limit: int = 4096) -> None:
+        self.limit = limit
+        self.calls: list[tuple] = []
+
+    async def complete(self, **kwargs):
+        from agent.graph import _canned_text
+
+        self.calls.append((kwargs.get("seed"), kwargs.get("max_tokens")))
+        if (kwargs.get("max_tokens") or 0) <= self.limit:
+            return _chat_completion(None, finish_reason="length")   # recorded truncated shape
+        return _chat_completion(_canned_text(kwargs["messages"]))
+
+
+def test_token_ladder_is_initial_then_double():
+    assert _token_ladder(4096) == [4096, 8192]
+    assert _token_ladder(2048) == [2048, 4096]
+    assert _token_ladder(None) == [None]        # back-compat: no cap, single call, no retry
+
+
+async def test_retry_recovers_truncated_draft_with_same_seed():
+    client = _TruncateThenSucceedClient(limit=4096)        # 4k truncates, 8k succeeds
+    events = await collect("demo", "none", client=client, seed=0, max_tokens=4096,
+                           policy=load_policy(_POLICY))
+    assert events[-1].type == "run_complete"
+    assert events[-1].data.status in ("completed", "completed_with_skips")
+    # the first draft call hits the 4k cap, then retries ONCE at 8k with the identical seed
+    assert client.calls[0][1] == 4096
+    assert client.calls[1] == (client.calls[0][0], 8192)
+    assert all(mt in (4096, 8192) for _, mt in client.calls)
+
+
+async def test_no_retry_when_first_call_succeeds():
+    class _OK(_TruncateThenSucceedClient):
+        async def complete(self, **kwargs):
+            from agent.graph import _canned_text
+
+            self.calls.append((kwargs.get("seed"), kwargs.get("max_tokens")))
+            return _chat_completion(_canned_text(kwargs["messages"]))
+
+    client = _OK()
+    events = await collect("demo", "none", client=client, seed=0, max_tokens=4096,
+                           policy=load_policy(_POLICY))
+    assert events[-1].data.status in ("completed", "completed_with_skips")
+    assert all(mt == 4096 for _, mt in client.calls), "must not escalate when the 4k call succeeds"
+
+
+async def test_retry_exhausted_still_empty_fails_loud():
+    client = _TruncateThenSucceedClient(limit=10**9)       # truncates at every cap
+    events = await collect("demo", "none", client=client, seed=0, max_tokens=4096,
+                           policy=load_policy(_POLICY))
+    err = _by_type(events, "error")[-1]
+    assert "draft_query" in err.data.message and "length" in err.data.message
+    assert events[-1].data.status == "failed"
+    # exactly one bounded retry: draft tried 4k then 8k, both truncated, then failed loud
+    assert [mt for _, mt in client.calls] == [4096, 8192]
+
+
+# --- a truncated FINAL attempt is an error even with partial text (never an accepted run) -------
+class _TruncatedWithTextClient:
+    """Every call returns partial text with finish_reason='length' (never a clean stop)."""
+
+    model, mode = "muse-spark-1.3", "fake"
+
+    async def complete(self, **kwargs):
+        return _chat_completion("partial draft cut off mid-", finish_reason="length")
+
+
+class _TruncatedReportClient(FakeClient):
+    """Clean draft + DONE reflection, but the report comes back truncated-with-text."""
+
+    async def complete(self, **kwargs):
+        from agent.graph import _canned_text
+
+        text = " ".join(m["content"] for m in kwargs["messages"]).lower()
+        if "report" in text:
+            return _chat_completion("partial report body", finish_reason="length")
+        return _chat_completion(_canned_text(kwargs["messages"]))
+
+
+async def test_truncated_final_draft_with_text_is_not_accepted():
+    events = await collect("demo", "none", client=_TruncatedWithTextClient(), seed=0,
+                           max_tokens=4096, policy=load_policy(_POLICY))
+    err = _by_type(events, "error")[-1]
+    assert "draft_query" in err.data.message and "truncated output" in err.data.message
+    assert events[-1].type == "run_complete"
+    assert events[-1].data.status == "failed"
+    assert events[-1].data.status not in ("completed", "completed_with_skips")
+    assert _by_type(events, "search_results") == []        # truncated draft never dispatched
+
+
+async def test_truncated_final_report_with_text_is_not_accepted():
+    events = await collect("demo", "none", client=_TruncatedReportClient(), seed=0,
+                           max_tokens=4096, policy=load_policy(_POLICY))
+    err = _by_type(events, "error")[-1]
+    assert "generate_report" in err.data.message and "truncated output" in err.data.message
+    assert events[-1].data.status == "failed"
+    assert events[-1].data.status not in ("completed", "completed_with_skips")
+    assert _by_type(events, "report_chunk") == [], "a truncated report must not be published"
+
+
+# --- reflection must be exactly DONE or CONTINUE -----------------------------------------------
+async def test_reflection_other_than_done_or_continue_fails_loud():
+    events = await collect("demo", "none", client=FakeClient(reflect_answer="maybe keep looking"),
+                           policy=load_policy(_POLICY))
+    err = _by_type(events, "error")[-1]
+    assert "reflect" in err.data.message and "DONE" in err.data.message and "CONTINUE" in err.data.message
+    assert events[-1].data.status == "failed"
+
+
+async def test_reflection_continue_and_done_are_both_valid():
+    # CONTINUE at hop 1 then (FakeClient default) DONE keeps the run accepted — strict check passes.
+    done = await collect("demo", "none", client=FakeClient(reflect_answer="  continue  "),
+                         policy=load_policy(_POLICY))
+    # 'continue' (whitespace/case tolerant) is accepted as not-done; the loop runs to MAX_HOPS then
+    # reports, so the run still completes rather than erroring on the reflection format.
+    assert done[-1].type == "run_complete"
+    assert done[-1].data.status in ("completed", "completed_with_skips")

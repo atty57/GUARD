@@ -160,6 +160,7 @@ venv/
 
 # Project data (rebuilt by scripts)
 *.db
+.cost_ledger.db*
 corpus/raw/
 
 # Held-out evaluation data; generator v1 only writes the Halden dev company.
