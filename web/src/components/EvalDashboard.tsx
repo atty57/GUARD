@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { EvalResults } from '@/evalTypes'
 import { Badge } from '@/components/ui/badge'
+import { ConditionsTable } from '@/components/ConditionsTable'
 
 // What the screen can be showing: still loading, an error message, or the results.
 type Load = { state: 'loading' } | { state: 'error'; message: string } | { state: 'ready'; data: EvalResults }
@@ -55,6 +56,8 @@ export function EvalDashboard() {
           {r.split} split · agent {r.models.agent}
         </p>
       </div>
+
+      <ConditionsTable conditions={r.conditions} />
     </main>
   )
 }
