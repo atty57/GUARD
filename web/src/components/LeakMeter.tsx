@@ -25,15 +25,19 @@ function policyBreaches(guess: Range, limit: SecretLimit): string[] {
   if (width < limit.min_width) {
     out.push(`Narrower than the policy allows (must stay at least ${limit.min_width} ${limit.unit} wide)`)
   }
-  const bits = Math.max(Math.log2(priorWidth / Math.max(width, limit.resolution)), 0)
+  // Rounded to 3 decimals like interval_metrics() in guard/policy.py, so a guess sitting
+  // exactly at the limit gets the same verdict here as in the guard.
+  const bits = Math.round(Math.max(Math.log2(priorWidth / Math.max(width, limit.resolution)), 0) * 1000) / 1000
   if (bits > limit.bits_budget) {
     out.push('Gives away more than the policy\'s information budget for this secret')
   }
   if (limit.threshold !== null) {
     const t = limit.threshold
-    const priorSettled = limit.prior[0] >= t || limit.prior[1] < t
+    // A range ending exactly at the threshold ("below 265" = [lo, 265]) counts as below it,
+    // matching reveals_threshold_side() in guard/policy.py (#47).
+    const priorSettled = limit.prior[0] >= t || limit.prior[1] <= t
     if (!priorSettled && guess[0] >= t) out.push(`Reveals it is above the ${t} ${limit.unit} legal threshold`)
-    else if (!priorSettled && guess[1] < t) out.push(`Reveals it is below the ${t} ${limit.unit} legal threshold`)
+    else if (!priorSettled && guess[1] <= t) out.push(`Reveals it is below the ${t} ${limit.unit} legal threshold`)
   }
   return out
 }
