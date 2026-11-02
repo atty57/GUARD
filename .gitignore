@@ -162,5 +162,7 @@ venv/
 *.db
 corpus/raw/
 
+# Held-out evaluation data; generator v1 only writes the Halden dev company.
+data/heldout/
 # Live runs saved by the API (local; `git add -f` one if the team needs it)
 runs/live/
