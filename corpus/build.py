@@ -248,6 +248,13 @@ def main(argv=None) -> int:
         raw / "g_cpc_current.tsv.zip", raw / "g_patent.tsv.zip",
         raw / "g_patent_abstract.tsv.zip", args.db, args.manifest,
         n=args.n, source_info={"release": SOURCE_RELEASE, "files": files})
+    # A rebuild must restore the committed attack pages as well as the frozen real patents.
+    from corpus.overlay import plant, read_page, update_manifest
+    pages = [read_page(p) for p in sorted((ROOT / "corpus" / "poisoned").glob("*.md"))]
+    if pages:
+        plant(pages, Path(args.db))
+        update_manifest(Path(args.db), Path(args.manifest))
+        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
     dt = time.time() - t0
     print(f"OK  {args.db}: {manifest['doc_count']} patents "
           f"(cathode={manifest['counts']['cathode']}, cell={manifest['counts']['cell']}), "

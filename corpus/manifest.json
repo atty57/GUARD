@@ -1,5 +1,5 @@
 {
-  "corpus_sha": "8c4f7dd598be95987b3a5d15e27c71d4f364cd007a3b7024f5762d491c2e6f6b",
+  "corpus_sha": "7ec44cf619dc0e6d46f784551a766c4fae29e5e8325fa4124a3c44265ca76624",
   "doc_count": 4000,
   "counts": {
     "cathode": 2400,
@@ -4038,5 +4038,15 @@
     "9997771",
     "9997774",
     "9997804"
-  ]
+  ],
+  "overlay_sha": "181c3ed7424fdd01dca8d5dd34201be210eca95c989c30b917030826f7080067",
+  "planted": [
+    {
+      "id": "US-POISON-HALDEN",
+      "kind": "poisoned",
+      "company": "Halden Cells",
+      "page": "corpus/poisoned/halden.md"
+    }
+  ],
+  "base_corpus_sha": "8c4f7dd598be95987b3a5d15e27c71d4f364cd007a3b7024f5762d491c2e6f6b"
 }

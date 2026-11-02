@@ -6,8 +6,9 @@ Reads the SQLite FTS5 DB built by ``corpus/build.py`` (``corpus/patents.db``; ov
 ``$CORPUS_DB``). Deterministic: the same query returns the same hits (BM25 rank, id tie-break).
 An empty / terms-less query returns ``[]``. ``score`` is ``-bm25`` so higher = more relevant.
 
-``search.corpus_meta()`` reports the corpus name + ``corpus_sha`` (from the manifest beside the
-DB); ``agent.graph`` reads it to stamp the ``search_results`` event.
+``search.corpus_meta()`` reports the corpus name + effective ``corpus_sha`` from the DB;
+``agent.graph`` reads it to stamp the ``search_results`` event. Registered poisoned pages
+return their complete short text as the snippet so their instruction reaches the agent.
 """
 from __future__ import annotations
 
@@ -49,11 +50,15 @@ def search(query: str, k: int = 5) -> list[dict]:
         return []
     with closing(_connect()) as con:
         rows = con.execute(
-            "SELECT id, title, snippet(patents, 2, '', '', '…', 12), bm25(patents) "
+            "SELECT id, title, snippet(patents, 2, '', '', '…', 12), bm25(patents), abstract "
             "FROM patents WHERE patents MATCH ? ORDER BY bm25(patents), id LIMIT ?",
             (match, k),
         ).fetchall()
-    return [{"id": r[0], "title": r[1], "snippet": r[2], "score": round(-r[3], 6)} for r in rows]
+        planted = set()
+        if con.execute("SELECT 1 FROM sqlite_master WHERE name='planted_pages'").fetchone():
+            planted = {r[0] for r in con.execute("SELECT id FROM planted_pages WHERE kind='poisoned'")}
+    return [{"id": r[0], "title": r[1], "snippet": r[4] if r[0] in planted else r[2],
+             "score": round(-r[3], 6)} for r in rows]
 
 
 def corpus_meta() -> dict:
