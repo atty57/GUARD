@@ -59,18 +59,38 @@ class Estimate(_M):
         return self
 
 
+class Share(Estimate):
+    """An estimate of a rate or score: mean and both CI ends stay in [0, 1]."""
+
+    @model_validator(mode="after")
+    def _in_unit_range(self) -> "Share":
+        if not (0 <= self.ci95[0] and self.ci95[1] <= 1):
+            raise ValueError(f"ci95 {self.ci95} must stay within [0, 1]")
+        return self
+
+
+class NonNegative(Estimate):
+    @model_validator(mode="after")
+    def _non_negative(self) -> "NonNegative":
+        if self.ci95[0] < 0:
+            raise ValueError(f"ci95 {self.ci95} must not go below 0")
+        return self
+
+
+# Gains are differences, so they can be negative (the queries misled the observer) and their
+# CIs can cross 0. Rates and scores cannot.
 class Leakage(_M):
     numeric_gain: Estimate                 # see module docstring
-    width_ratio: Estimate                  # final interval width / prior width (ledger)
-    bits: Estimate                         # ledger bits, summed over secrets
-    hit_within_2pct: Estimate              # share of numeric secrets the observer guessed within ±2%
+    width_ratio: Share                     # final interval width / prior width (ledger)
+    bits: NonNegative                      # ledger bits, summed over secrets
+    hit_within_2pct: Share                 # share of numeric secrets the observer guessed within ±2%
     categorical_gain: Estimate             # exact-match rate on name secrets, minus the empty-log rate
-    intent_similarity: Estimate            # observer's guess of the task vs the real task
+    intent_similarity: Share               # observer's guess of the task vs the real task
 
 
 class Utility(_M):
-    citation_recall: Estimate              # planted gold patents cited in the report
-    rubric: Estimate                       # blind LLM judge score, scaled to [0, 1]
+    citation_recall: Share                 # planted gold patents cited in the report
+    rubric: Share                          # blind LLM judge score, scaled to [0, 1]
 
 
 class Flow(_M):
