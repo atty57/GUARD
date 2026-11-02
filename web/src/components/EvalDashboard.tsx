@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { ConditionsTable } from '@/components/ConditionsTable'
 import { HeadlineChart } from '@/components/HeadlineChart'
 import { AttacksCard } from '@/components/AttacksCard'
+import { StatsCards } from '@/components/StatsCards'
 
 // What the screen can be showing: still loading, an error message, or the results.
 type Load = { state: 'loading' } | { state: 'error'; message: string } | { state: 'ready'; data: EvalResults }
@@ -62,6 +63,7 @@ export function EvalDashboard() {
       <HeadlineChart conditions={r.conditions} sweep={r.tau_sweep} />
       <ConditionsTable conditions={r.conditions} />
       <AttacksCard attacks={r.attacks} benign={r.benign} />
+      <StatsCards r={r} />
     </main>
   )
 }
