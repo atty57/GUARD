@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 import guard.check as moat_guard  # Hyeseong's real guard (the module with async check())
 from agent.events import EventAdapter, to_sse
@@ -34,14 +34,20 @@ def health():
     return {"status": "ok"}
 
 
+NO_CACHE = {"Cache-Control": "no-cache"}
+
+
 @app.get("/api/eval")
 def eval_results():
     """The experiment results the dashboard shows, checked against the moat.eval.v1 schema.
 
     Read from disk on every request, so a new eval_results.json shows up without a restart.
+    Every answer says "no-cache", so the browser asks again each time instead of reusing an old
+    answer (it had kept a 404 from when the file was missing).
     """
     if not EVAL_RESULTS.is_file():
-        raise HTTPException(status_code=404, detail="No eval results yet (eval/eval_results.json)")
+        raise HTTPException(status_code=404, detail="No eval results yet (eval/eval_results.json)",
+                            headers=NO_CACHE)
     # Imported here rather than at the top, so the rest of the API still starts on a checkout
     # without eval/schema.py (Hyeseong's #53).
     from pydantic import ValidationError
@@ -50,9 +56,9 @@ def eval_results():
         results = load_results(EVAL_RESULTS)
     except ValidationError as exc:
         # A results file that doesn't match the schema is a bug to fix, not something to show.
-        raise HTTPException(status_code=500,
+        raise HTTPException(status_code=500, headers=NO_CACHE,
                             detail=f"eval_results.json doesn't match moat.eval.v1: {exc}") from exc
-    return results.model_dump(mode="json", by_alias=True)
+    return JSONResponse(results.model_dump(mode="json", by_alias=True), headers=NO_CACHE)
 
 
 # --- Replay a recorded run in the moat.v2 SSE format ---
