@@ -24,11 +24,35 @@ POLICY_PATH = Path(__file__).resolve().parent.parent / "data" / "policy.example.
 # Recorded model answers, so a live run works with no API key (LLM_MODE=replay, the default).
 # Only covers task "demo" for now; other tasks fail closed until a key or more recordings exist.
 LLM_FIXTURE = Path(__file__).resolve().parent.parent / "runs" / "recordings" / "llm_demo.jsonl"
+# Experiment results for the dashboard (S5). Written by Hyeseong's eval/score.py; until the real
+# run lands it holds placeholder numbers with "placeholder": true. Format: eval/schema.py.
+EVAL_RESULTS = Path(__file__).resolve().parent.parent / "eval" / "eval_results.json"
 
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/eval")
+def eval_results():
+    """The experiment results the dashboard shows, checked against the moat.eval.v1 schema.
+
+    Read from disk on every request, so a new eval_results.json shows up without a restart.
+    """
+    if not EVAL_RESULTS.is_file():
+        raise HTTPException(status_code=404, detail="No eval results yet (eval/eval_results.json)")
+    # Imported here rather than at the top, so the rest of the API still starts on a checkout
+    # without eval/schema.py (Hyeseong's #53).
+    from pydantic import ValidationError
+    from eval.schema import load_results
+    try:
+        results = load_results(EVAL_RESULTS)
+    except ValidationError as exc:
+        # A results file that doesn't match the schema is a bug to fix, not something to show.
+        raise HTTPException(status_code=500,
+                            detail=f"eval_results.json doesn't match moat.eval.v1: {exc}") from exc
+    return results.model_dump(mode="json", by_alias=True)
 
 
 # --- Replay a recorded run in the moat.v2 SSE format ---
