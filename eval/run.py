@@ -11,10 +11,10 @@ Correctness properties (see the approved plan):
 - **Resumable (R3).** The *sidecar* is the done-marker, published atomically after the JSONL. A run
   is skipped only when its sidecar exists, its status is accepted, and its input fingerprint still
   matches — so a crash before the sidecar, a `failed` run, or changed inputs all re-run.
-- **Budgets are hard caps (R4).** Each run gets a per-run `max_usd` + `max_tokens`; the global
-  `--max-usd-total` reserves a run's budget *before* dispatch and persists committed spend across
-  restarts via the sidecars, so concurrency can't overspend and a restart doesn't forget. When the
-  cap is hit the runner stops admitting and keeps the finished runs.
+- **Budgets (R4).** Each run gets a per-run `max_usd` + `max_tokens`; the global cap reserves
+  its allowance durably in `.cost_ledger.db` before dispatch. Every attempt is retained,
+  including failures, forced retries and interrupted reservations, independently of sidecars.
+  Unknown charges remain reserved conservatively after a restart.
 - **Immutable per-run recordings (R5).** Each run records/replays from its own
   `runs/recordings/<run_id>.jsonl` (rewritten per attempt, never appended across attempts) — no
   lossy global merge. The accepted recording is named in the sidecar.
@@ -32,10 +32,15 @@ import argparse
 import asyncio
 import hashlib
 import json
+import math
 import os
 import re
+import sqlite3
 import sys
+import tempfile
 import time
+import uuid
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -92,6 +97,7 @@ class CellPlan:
     def __post_init__(self) -> None:
         payload = {
             "v": graphmod.GRAPH_BEHAVIOR_VERSION,
+            "gen_retry": graphmod.GEN_RETRY_POLICY,
             "condition": self.cell.condition,
             "tau": self.cell.tau,
             "seed": self.cell.seed,
@@ -259,12 +265,23 @@ def _rel(path: Path) -> str:
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
-        fh.write(text)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, path)          # atomic on POSIX and Windows
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n",
+                                     dir=path.parent, prefix=f".{path.name}.",
+                                     suffix=".tmp", delete=False) as fh:
+        tmp = Path(fh.name)
+        try:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        except BaseException:
+            fh.close()
+            tmp.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def read_sidecar(cell: Cell, root: Path) -> dict | None:
@@ -279,8 +296,18 @@ def read_sidecar(cell: Cell, root: Path) -> dict | None:
 
 def is_done(plan: CellPlan, root: Path) -> bool:
     m = read_sidecar(plan.cell, root)
-    return bool(m and m.get("status") in ACCEPTED
-                and m.get("input_fingerprint") == plan.fingerprint)
+    if not (m and m.get("status") in ACCEPTED
+            and m.get("input_fingerprint") == plan.fingerprint):
+        return False
+    try:
+        payload = plan.cell.out_path(root).read_bytes()
+        if hashlib.sha256(payload).hexdigest() != m.get("events_sha256"):
+            return False
+        last = json.loads(payload.splitlines()[-1])
+        return (last.get("type") == "run_complete" and last.get("run_id") == plan.cell.run_id
+                and last.get("data", {}).get("status") == m["status"])
+    except (OSError, ValueError, IndexError):
+        return False
 
 
 # --- running one cell --------------------------------------------------------------------------
@@ -299,14 +326,17 @@ def default_client_factory(plan: CellPlan, rec_path: Path, *, per_run_max_usd: f
                      max_usd=per_run_max_usd)
 
 
-async def run_cell(plan: CellPlan, *, root: Path, client_factory, guard=None, search=None) -> dict:
+async def run_cell(plan: CellPlan, *, root: Path, client_factory, guard=None, search=None,
+                   attempt_id: str | None = None, account_cost=None) -> dict:
     """Run one cell to completion and publish its JSONL + sidecar atomically. Returns the sidecar.
 
-    A hard external kill leaves *neither* file (we publish only at the end), so a restart re-runs
-    it. A graph-level failure yields a terminal ``run_complete(status="failed")`` here, which the
-    sidecar records and resume re-runs (status not accepted).
+    The previous completion marker is removed before starting. Results are published at the end,
+    with an event digest in the sidecar. A missing marker or mismatching digest forces a rerun.
+    Graph failures publish a failed sidecar; their cost remains in the independent ledger.
     """
     c = plan.cell
+    # A previous completion marker must not survive replacement of its events or recording.
+    c.meta_path(root).unlink(missing_ok=True)
     rec = recording_path(c, root)
     client = client_factory(plan, rec)
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -327,6 +357,9 @@ async def run_cell(plan: CellPlan, *, root: Path, client_factory, guard=None, se
               f"— marking invalid", file=sys.stderr)
         status = "invalid"        # fail loud; not accepted ⇒ re-runs next invocation
 
+    event_text = "\n".join(lines) + ("\n" if lines else "")
+    cost = float(getattr(client, "cost_usd", 0.0))
+    uncertain = float(getattr(client, "uncertain_usd", 0.0))
     meta = {
         "run_id": c.run_id, "label": c.label, "condition": c.condition, "tau": c.tau,
         "task_id": c.task_id, "company": c.company, "slug": c.slug, "seed": c.seed,
@@ -337,7 +370,9 @@ async def run_cell(plan: CellPlan, *, root: Path, client_factory, guard=None, se
         "status": status, "llm_mode": plan.llm_mode, "corpus_sha": plan.corpus_sha,
         "hops": (rc or {}).get("hops"), "sent": (rc or {}).get("sent"),
         "rewritten": (rc or {}).get("rewritten"), "blocked": (rc or {}).get("blocked"),
-        "cost_usd": round(getattr(client, "cost_usd", 0.0), 6),
+        "cost_usd": cost, "uncertain_usd": uncertain, "budget_charge_usd": cost + uncertain,
+        "cost_attempt_id": attempt_id,
+        "events_sha256": hashlib.sha256(event_text.encode("utf-8")).hexdigest(),
         "tokens_in": getattr(client, "tokens_in", 0),
         "tokens_out": getattr(client, "tokens_out", 0),
         "sent_queries": sent, "report": report,
@@ -345,23 +380,70 @@ async def run_cell(plan: CellPlan, *, root: Path, client_factory, guard=None, se
     }
     out = c.out_path(root)
     out.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write(out, "\n".join(lines) + ("\n" if lines else ""))   # JSONL first …
+    if account_cost is not None:
+        # All model calls have ended. Persist their charge before publishing either artifact.
+        account_cost(cost + uncertain)
+    _atomic_write(out, event_text)                                  # JSONL first …
     _atomic_write(c.meta_path(root), json.dumps(meta, indent=2))      # … sidecar last = done-marker
     return meta
 
 
 # --- cost ledger (R4) --------------------------------------------------------------------------
+class CostLedger:
+    """Attempt accounting independent of replaceable results; pending reservations survive kills.
+
+    SQLite commits admission before any API call and serializes budget checks across processes.
+    An interrupted attempt stays charged at its full allowance until usage can be reconciled.
+    """
+
+    def __init__(self, root: Path):
+        root.mkdir(parents=True, exist_ok=True)
+        self.path = root / ".cost_ledger.db"
+        with closing(sqlite3.connect(self.path)) as con, con:
+            con.execute("CREATE TABLE IF NOT EXISTS attempts ("
+                        "id TEXT PRIMARY KEY, run_id TEXT NOT NULL, reserved REAL NOT NULL, "
+                        "charge REAL NOT NULL, state TEXT NOT NULL)")
+            # Import pre-ledger outputs once, including paid failures. New sidecars already
+            # name a ledger attempt, so replay/force can never import or erase those charges.
+            for path in root.glob("*/*.meta.json"):
+                try:
+                    payload = path.read_bytes()
+                    meta = json.loads(payload)
+                    charge = float(meta.get("budget_charge_usd", meta.get("cost_usd")) or 0.0)
+                except (OSError, ValueError, TypeError):
+                    continue
+                if meta.get("cost_attempt_id") or not math.isfinite(charge) or charge <= 0:
+                    continue
+                identity = "legacy:" + hashlib.sha256(str(path).encode() + payload).hexdigest()
+                con.execute("INSERT OR IGNORE INTO attempts VALUES (?,?,?,?,?)",
+                            (identity, meta.get("run_id", str(path)), charge, charge, "legacy"))
+
+    def total(self) -> float:
+        with closing(sqlite3.connect(self.path)) as con:
+            return float(con.execute("SELECT COALESCE(SUM(charge),0) FROM attempts").fetchone()[0])
+
+    def reserve(self, run_id: str, amount: float, cap: float | None) -> str | None:
+        with closing(sqlite3.connect(self.path)) as con, con:
+            con.execute("BEGIN IMMEDIATE")
+            total = con.execute("SELECT COALESCE(SUM(charge),0) FROM attempts").fetchone()[0]
+            if amount > 0 and cap is not None and total + amount > cap + 1e-12:
+                return None
+            attempt = uuid.uuid4().hex
+            con.execute("INSERT INTO attempts VALUES (?,?,?,?,?)",
+                        (attempt, run_id, amount, amount, "pending"))
+            return attempt
+
+    def settle(self, attempt: str, charge: float) -> None:
+        if not math.isfinite(charge) or charge < 0:
+            raise ValueError("attempt charge must be finite and nonnegative")
+        with closing(sqlite3.connect(self.path)) as con, con:
+            con.execute("UPDATE attempts SET charge=?, state='settled' WHERE id=? AND state='pending'",
+                        (charge, attempt))
+
+
 def committed_spend(root: Path) -> float:
-    """Sum accepted-run cost from existing sidecars (persisted budget across restarts)."""
-    total = 0.0
-    for meta in root.glob("*/*.meta.json"):
-        try:
-            m = json.loads(meta.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if m.get("status") in ACCEPTED:
-            total += float(m.get("cost_usd") or 0.0)
-    return total
+    """Known spend plus conservative liabilities for interrupted attempts."""
+    return CostLedger(root).total()
 
 
 # --- the matrix runner -------------------------------------------------------------------------
@@ -373,43 +455,62 @@ async def run_matrix(plans: list[CellPlan], *, root: Path, concurrency: int,
         def client_factory(plan, rec):   # noqa: ANN001 — default real builder
             return default_client_factory(plan, rec, per_run_max_usd=per_run_max_usd)
 
+    if concurrency <= 0:
+        raise ValueError("concurrency must be positive")
+    if not math.isfinite(per_run_max_usd) or per_run_max_usd < 0:
+        raise ValueError("per-run budget must be finite and nonnegative")
+    if max_usd_total is not None and (not math.isfinite(max_usd_total) or max_usd_total < 0):
+        raise ValueError("total budget must be finite and nonnegative")
+    if any(p.llm_mode != "replay" and (p.max_tokens is None or p.max_tokens <= 0) for p in plans):
+        raise ValueError("live/record cells require a positive max_tokens bound")
+    if len({p.cell.out_path(root) for p in plans}) != len(plans):
+        raise ValueError("matrix contains duplicate output paths")
     sem = asyncio.Semaphore(concurrency)
-    lock = asyncio.Lock()
-    committed = committed_spend(root)
-    reserved = 0.0
-    aborted = False
+    available = asyncio.Condition()
+    ledger = CostLedger(root)
+    active = 0
     done, skipped, failed, budget_skipped = [], [], [], []
 
     async def worker(plan: CellPlan):
-        nonlocal committed, reserved, aborted
-        if not force and is_done(plan, root):
-            skipped.append(plan.cell.run_id)
-            return
-        async with lock:                                  # reserve BEFORE dispatch (R4)
-            if aborted:
-                budget_skipped.append(plan.cell.run_id)
+        nonlocal active
+        async with sem:
+            if not force and is_done(plan, root):
+                skipped.append(plan.cell.run_id)
                 return
-            if (max_usd_total is not None
-                    and committed + reserved + per_run_max_usd > max_usd_total + 1e-12):
-                aborted = True
-                budget_skipped.append(plan.cell.run_id)
-                return
-            reserved += per_run_max_usd
-        try:
-            async with sem:
+            amount = 0.0 if plan.llm_mode == "replay" else per_run_max_usd
+            async with available:
+                while True:
+                    attempt = ledger.reserve(plan.cell.run_id, amount, max_usd_total)
+                    if attempt is not None:
+                        active += 1
+                        break
+                    if active == 0:
+                        budget_skipped.append(plan.cell.run_id)
+                        return
+                    # Active cells may return unused allowances. Do not reject queued work yet.
+                    await available.wait()
+            try:
                 meta = await run_cell(plan, root=root, client_factory=client_factory,
-                                      guard=guard, search=search)
-        finally:
-            async with lock:
-                reserved -= per_run_max_usd
-        async with lock:
-            committed += float(meta.get("cost_usd") or 0.0)
-        (done if meta.get("status") in ACCEPTED else failed).append((plan.cell.run_id, meta))
+                                      guard=guard, search=search, attempt_id=attempt,
+                                      account_cost=lambda charge: ledger.settle(attempt, charge))
+                (done if meta.get("status") in ACCEPTED else failed).append((plan.cell.run_id, meta))
+            finally:
+                # Exceptions/cancellation before accounting leave the durable reservation intact.
+                async with available:
+                    active -= 1
+                    available.notify_all()
 
-    await asyncio.gather(*(worker(p) for p in plans))
+    workers = [asyncio.create_task(worker(p)) for p in plans]
+    try:
+        await asyncio.gather(*workers)
+    except BaseException:
+        for worker_task in workers:
+            worker_task.cancel()
+        await asyncio.gather(*workers, return_exceptions=True)
+        raise
     return {"done": done, "skipped": skipped, "failed": failed,
-            "budget_skipped": budget_skipped, "aborted": aborted,
-            "committed_usd": round(committed, 6)}
+            "budget_skipped": budget_skipped, "aborted": bool(budget_skipped),
+            "committed_usd": round(ledger.total(), 6)}
 
 
 # --- CLI ---------------------------------------------------------------------------------------
@@ -465,7 +566,7 @@ def main(argv=None) -> int:
         per_run_max_usd=a.max_usd, force=a.force))
 
     _print_summary(summary, plans, root)
-    return 1 if summary["aborted"] else 0
+    return 1 if summary["aborted"] or summary["failed"] else 0
 
 
 def _print_summary(summary: dict, plans: list[CellPlan], root: Path) -> None:
@@ -479,7 +580,7 @@ def _print_summary(summary: dict, plans: list[CellPlan], root: Path) -> None:
         per_cond.setdefault(meta["condition"], []).append(meta.get("sent") or 0)
     for run_id, meta in summary["failed"]:
         print(f"  {run_id:38s} FAILED status={meta['status']}")
-    print(f"total committed: ${summary['committed_usd']:.4f}"
+    print(f"budget accounted (spend + unresolved allowances): ${summary['committed_usd']:.4f}"
           + ("  [ABORTED on budget — partial results kept]" if summary["aborted"] else ""))
     if per_cond:
         print("sent-query counts per condition (activity signal, not a leak verdict):")

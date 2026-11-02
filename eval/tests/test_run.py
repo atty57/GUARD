@@ -14,6 +14,8 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
+
 import agent.graph as graphmod
 from eval import run as R
 
@@ -124,7 +126,8 @@ def test_same_seed_same_draft_across_conditions(tmp_path):
 
 # --- 3. cost cap aborts cleanly, keeping partial results ---------------------------------------
 def test_budget_abort_keeps_partial_results(tmp_path):
-    plans = _plans(tmp_path, conditions=["none", "prompt", "moat", "moat_prompt"])  # 4 cells
+    plans = _plans(tmp_path, conditions=["none", "prompt", "moat", "moat_prompt"],
+                   llm_mode="live")  # paid fake cells
 
     def factory(plan, rec):
         return FakeClient(cost=0.10, run_id=plan.cell.run_id)
@@ -168,3 +171,156 @@ def test_fingerprint_changes_when_document_changes(tmp_path):
     (tmp_path / "docs" / "halden" / "D1.md").write_text("EDITED body of D1", encoding="utf-8")
     plans2 = _plans(tmp_path, conditions=["none"], docs={"t1": ["D1"]})
     assert plans2[0].fingerprint != fp_before
+
+
+def test_fingerprint_folds_in_gen_retry_policy(tmp_path, monkeypatch):
+    fp_before = _plans(tmp_path, conditions=["none"])[0].fingerprint
+    monkeypatch.setattr(graphmod, "GEN_RETRY_POLICY", "4k->8k.v2-different")
+    assert _plans(tmp_path, conditions=["none"])[0].fingerprint != fp_before
+
+
+def test_budget_waits_for_unused_reservations(tmp_path):
+    plans = _plans(tmp_path, conditions=["none", "prompt", "moat", "moat_prompt"], llm_mode="live")
+    for concurrency in (1, 4):
+        root = tmp_path / str(concurrency)
+        result = _run(plans, root, concurrency=concurrency, max_usd_total=.15, per_run=.1,
+                      client_factory=lambda p, r: FakeClient(cost=.001))
+        assert len(result["done"]) == 4 and not result["aborted"]
+        assert result["committed_usd"] == pytest.approx(.004)
+
+
+def test_forced_attempt_costs_accumulate_across_restarts(tmp_path):
+    plans = _plans(tmp_path, conditions=["none"], llm_mode="live")
+    factory = lambda p, r: FakeClient(cost=.1)
+    for expected in (.1, .2, .3):
+        result = _run(plans, tmp_path, force=True, max_usd_total=.3, per_run=.1,
+                      client_factory=factory)
+        assert len(result["done"]) == 1
+        assert R.committed_spend(tmp_path) == pytest.approx(expected)
+    result = _run(plans, tmp_path, force=True, max_usd_total=.3, per_run=.1, client_factory=factory)
+    assert result["aborted"] and not result["done"]
+
+
+def test_failed_attempts_remain_charged(tmp_path):
+    class FailingClient(FakeClient):
+        async def complete(self, **kw):
+            self.cost_usd = .1
+            raise RuntimeError("model failed after billing")
+
+    plans = _plans(tmp_path, conditions=["none"], llm_mode="live")
+    result = _run(plans, tmp_path, per_run=.1, client_factory=lambda p, r: FailingClient())
+    assert result["failed"] and R.committed_spend(tmp_path) == pytest.approx(.1)
+    result = _run(plans, tmp_path, per_run=.1, max_usd_total=.15,
+                  client_factory=lambda p, r: FakeClient(cost=.1))
+    assert result["aborted"] and not result["done"]
+
+
+def test_replay_does_not_erase_paid_attempt_cost(tmp_path):
+    paid = _plans(tmp_path, conditions=["none"], llm_mode="live")
+    _run(paid, tmp_path, client_factory=lambda p, r: FakeClient(cost=.1))
+    replay = _plans(tmp_path, conditions=["none"], llm_mode="replay")
+    result = _run(replay, tmp_path, max_usd_total=0, client_factory=lambda p, r: FakeClient())
+    assert len(result["done"]) == 1 and not result["aborted"]
+    assert R.committed_spend(tmp_path) == pytest.approx(.1)
+
+
+def test_cancelled_attempt_retains_durable_reservation(tmp_path):
+    plans = _plans(tmp_path, conditions=["none"], llm_mode="live")
+
+    async def interrupt():
+        started = asyncio.Event()
+
+        class WaitingClient(FakeClient):
+            async def complete(self, **kw):
+                started.set()
+                await asyncio.Future()
+
+        task = asyncio.create_task(R.run_matrix(
+            plans, root=tmp_path, concurrency=1, max_usd_total=.15, per_run_max_usd=.1,
+            client_factory=lambda p, r: WaitingClient(), guard=graphmod.StubGuard(),
+            search=graphmod._stub_search))
+        await asyncio.wait_for(started.wait(), timeout=5)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(interrupt())
+    assert R.committed_spend(tmp_path) == pytest.approx(.1)
+    result = _run(plans, tmp_path, per_run=.1, max_usd_total=.15,
+                  client_factory=lambda p, r: FakeClient())
+    assert result["aborted"] and not result["done"]
+
+
+def test_publish_crash_cannot_accept_old_sidecar(tmp_path, monkeypatch):
+    plans = _plans(tmp_path, conditions=["none"], llm_mode="live")
+    plan = plans[0]
+    _run(plans, tmp_path, per_run=.1, client_factory=lambda p, r: FakeClient(cost=.01))
+    old_marker = plan.cell.meta_path(tmp_path).read_bytes()
+    original = R._atomic_write
+
+    class NewQuery(FakeClient):
+        async def complete(self, **kw):
+            if "search query" in kw["messages"][-1]["content"]:
+                return graphmod._chat_completion("new query after force")
+            return await super().complete(**kw)
+
+    def fail_marker(path, text):
+        if path == plan.cell.meta_path(tmp_path):
+            raise OSError("interrupted before completion marker")
+        original(path, text)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(R, "_atomic_write", fail_marker)
+        with pytest.raises(OSError, match="completion marker"):
+            _run(plans, tmp_path, force=True, per_run=.1,
+                 client_factory=lambda p, r: NewQuery(cost=.01))
+    assert not plan.cell.meta_path(tmp_path).exists()
+    assert not R.is_done(plan, tmp_path)
+    # Even a stale restored marker cannot validate events from a different attempt.
+    plan.cell.meta_path(tmp_path).write_bytes(old_marker)
+    assert not R.is_done(plan, tmp_path)
+    assert R.committed_spend(tmp_path) == pytest.approx(.02)
+    result = _run(plans, tmp_path, client_factory=lambda p, r: FakeClient())
+    assert len(result["done"]) == 1 and R.is_done(plan, tmp_path)
+
+
+def test_resume_rejects_missing_or_truncated_events(tmp_path):
+    plans = _plans(tmp_path, conditions=["none"])
+    _run(plans, tmp_path, client_factory=lambda p, r: FakeClient())
+    plan = plans[0]
+    assert R.is_done(plan, tmp_path)
+    path = plan.cell.out_path(tmp_path)
+    payload = path.read_bytes()
+    path.unlink()
+    assert not R.is_done(plan, tmp_path)
+    path.write_bytes(payload[:-10])
+    assert not R.is_done(plan, tmp_path)
+
+
+def test_legacy_failed_cost_imported_once(tmp_path):
+    path = tmp_path / "none" / "old.meta.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({"run_id": "old", "status": "failed", "cost_usd": .1}))
+    assert R.committed_spend(tmp_path) == pytest.approx(.1)
+    assert R.committed_spend(tmp_path) == pytest.approx(.1)
+    path.unlink()
+    assert R.committed_spend(tmp_path) == pytest.approx(.1)
+
+
+def test_cli_returns_failure_for_failed_cell(tmp_path, monkeypatch):
+    path = tmp_path / "tasks.jsonl"
+    path.write_text(json.dumps({"task_id": "missing-recording", "company": "Halden Cells",
+                                "question": "q", "needs_docs": []}) + "\n")
+    monkeypatch.setattr(R, "corpus_preflight", lambda allow_stub: "stub")
+    assert R.main(["--tasks-file", str(path), "--out-root", str(tmp_path / "out"),
+                   "--conditions", "none", "--llm-mode", "replay"]) == 1
+
+
+def test_document_framing_preserves_privacy_prompt_ablation():
+    document = [{"doc_id": "D1", "text": "Internal development marker"}]
+    prompts = {condition: graphmod.draft_prompt(graphmod._initial_state(
+        "t1", condition, "research question", document, 0)) for condition in R.CONDITIONS}
+    for condition, messages in prompts.items():
+        assert "Internal development marker" in messages[-1]["content"]
+        assert "do not leak into queries" not in messages[-1]["content"]
+        assert (graphmod.PRIVACY_NOTE in messages[0]["content"]) == (condition in ("prompt", "moat_prompt"))

@@ -156,3 +156,55 @@ async def test_record_then_replay_with_no_key(tmp_path):
     rep_out = await replayer.complete(**req)
     assert rep_out.choices[0].message.content == "trip"
     assert replayer._client is None
+
+
+async def test_bounded_call_reserves_prompt_as_well_as_output(tmp_path):
+    stub = _StubSDK(_completion("result", prompt=10_000, completion=10_000))
+    client = LLMClient(mode="live", api_key="test", max_usd=.05)
+    client._client = stub
+    # Output alone costs .0425 and used to pass; input would bring actual usage to .055.
+    with pytest.raises(BudgetExceeded, match="input and output"):
+        await client.complete(messages=[{"role": "user", "content": "x" * 40_000}], max_tokens=10_000)
+    assert not stub.calls and client.cost_usd == 0
+
+
+async def test_bounded_call_with_enough_budget_accounts_actual_usage():
+    client = LLMClient(mode="live", api_key="test", max_usd=.1)
+    client._client = _StubSDK(_completion("result", prompt=10_000, completion=10_000))
+    await client.complete(messages=[{"role": "user", "content": "x" * 40_000}], max_tokens=10_000)
+    assert client.cost_usd == pytest.approx(.055)
+    assert client.uncertain_usd == 0
+
+
+async def test_bounded_timeout_retains_allowance_and_disables_hidden_retries():
+    options = []
+
+    class SDK:
+        def with_options(self, **kwargs):
+            options.append(kwargs)
+            return self
+
+        class chat:
+            class completions:
+                @staticmethod
+                async def create(**kwargs):
+                    raise TimeoutError("response usage unknown")
+
+    client = LLMClient(mode="live", api_key="test", max_usd=.1)
+    client._client = SDK()
+    with pytest.raises(TimeoutError):
+        await client.complete(messages=[{"role": "user", "content": "test"}], max_tokens=100)
+    assert options == [{"max_retries": 0}]
+    assert 0 < client.uncertain_usd <= client.max_usd and client.cost_usd == 0
+    client.max_usd = client.uncertain_usd
+    with pytest.raises(BudgetExceeded):
+        await client.complete(messages=[{"role": "user", "content": "test"}], max_tokens=100)
+
+
+async def test_missing_usage_keeps_the_call_allowance_reserved():
+    response = _completion("result", prompt=0, completion=0)
+    response["usage"] = None
+    client = LLMClient(mode="live", api_key="test", max_usd=.1)
+    client._client = _StubSDK(response)
+    await client.complete(messages=[{"role": "user", "content": "test"}], max_tokens=100)
+    assert client.cost_usd == 0 and client.uncertain_usd > 0

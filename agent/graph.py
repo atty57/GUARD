@@ -64,10 +64,17 @@ _REPO = Path(__file__).resolve().parent.parent
 _DEFAULT_FIXTURE = _REPO / "runs" / "recordings" / "llm_demo.jsonl"
 _DEFAULT_POLICY = _REPO / "data" / "policy.example.yaml"
 
-# Bumped whenever prompt text, document truncation, or the seed scheme changes — the eval runner
-# folds it into each run's input fingerprint so stale outputs are re-run (A7 R3 / finding r2-C).
-GRAPH_BEHAVIOR_VERSION = "a7.v1"
+# Bumped whenever prompt text, document truncation, the seed scheme, or the generation/retry
+# policy changes — the eval runner folds it into each run's input fingerprint so stale outputs are
+# re-run (A7 R3 / finding r2-C).
+GRAPH_BEHAVIOR_VERSION = "a7.v4"
 DOC_TRUNCATE = 4000                     # per-doc chars included in the draft prompt (feeds r2-C)
+
+# Bounded generation retry: muse-spark-1.3 is a reasoning model that may exhaust its token budget on
+# hidden reasoning. Each call starts at the configured cap and, on a truncated/empty return, retries
+# ONCE at double (4k->8k with the pilot's --max-tokens 4096), identically for every node and
+# condition, with the paired seed unchanged so condition pairs still issue identical requests.
+GEN_RETRY_POLICY = "4k->8k.v1"
 
 # This is OUR wording, NOT a verbatim quote of the MosaicLeaks paper's privacy note (HANDOFF §10):
 # we have not reproduced the paper's exact text. It is the instruction the `prompt`/`moat_prompt`
@@ -86,7 +93,9 @@ def _call_seed(task_id: str, seed_index: int | None, role: str, hop: int, attemp
     if seed_index is None:
         return None
     blob = f"{task_id}|{seed_index}|{role}|{hop}|{attempt}"
-    return int(hashlib.sha256(blob.encode("utf-8")).hexdigest()[:8], 16)
+    # Constrain to a nonnegative signed 32-bit int: the Meta API rejects a seed outside
+    # 0..2147483647, and the top 8 hex digits alone reach 0xFFFFFFFF (G2 seed-range fix).
+    return int(hashlib.sha256(blob.encode("utf-8")).hexdigest()[:8], 16) & 0x7FFFFFFF
 
 
 def _gen_kwargs(messages: list[dict], *, task_id: str, seed_index: int | None, role: str,
@@ -99,6 +108,70 @@ def _gen_kwargs(messages: list[dict], *, task_id: str, seed_index: int | None, r
     if max_tokens is not None:
         kw["max_tokens"] = max_tokens
     return kw
+
+
+class EmptyModelResponse(RuntimeError):
+    """The model returned no usable text (e.g. exhausted max_tokens on reasoning before content)."""
+
+
+class InvalidReflection(RuntimeError):
+    """The reflect step returned something other than exactly DONE or CONTINUE."""
+
+
+def _reflection_is_done(text: str) -> bool:
+    """Reflection must be exactly DONE or CONTINUE (case-insensitive, surrounding whitespace ok).
+
+    The old ``'DONE' in text`` substring test silently treated any other text — including a verbose
+    reasoning dump or a truncated fragment — as CONTINUE, hiding malformed output. Fail loud instead.
+    """
+    verdict = text.strip().upper()
+    if verdict not in ("DONE", "CONTINUE"):
+        raise InvalidReflection(f"reflect: expected 'DONE' or 'CONTINUE', got {text.strip()[:80]!r}")
+    return verdict == "DONE"
+
+
+def _require_text(resp, node: str) -> str:
+    """Visible assistant text; fail loud (naming node + finish_reason) when the model emits none OR
+    the response was truncated (``finish_reason='length'``) — even if partial text exists.
+
+    A reasoning model can spend its whole token budget on hidden reasoning and return
+    ``content=None`` with ``finish_reason='length'``; a partial draft/report cut off mid-thought is
+    just as unusable, so a truncated final attempt is an error, never an accepted completion.
+    """
+    finish = resp.choices[0].finish_reason
+    text = resp.choices[0].message.content
+    empty = text is None or not text.strip()
+    if empty or finish == "length":
+        kind = "no content" if empty else "truncated output"
+        raise EmptyModelResponse(f"{node}: model returned {kind} (finish_reason={finish!r})")
+    return text.strip()
+
+
+def _token_ladder(max_tokens: int | None) -> list[int | None]:
+    """GEN_RETRY_POLICY cap sequence: the configured cap, then one retry at double (None ⇒ no cap,
+    no retry — back-compat for FakeClient/CLI paths that omit max_tokens)."""
+    return [None] if max_tokens is None else [max_tokens, max_tokens * 2]
+
+
+async def _complete_text(client, messages, *, node: str, task_id: str, seed_index: int | None,
+                         role: str, hop: int, attempt: int, max_tokens: int | None) -> str:
+    """Model call for ``node`` under GEN_RETRY_POLICY: start at ``max_tokens`` and, on a truncated
+    (``finish_reason='length'``) or empty return, retry ONCE at double. The paired seed is unchanged
+    across the retry, so condition pairs still issue identical requests. Raise EmptyModelResponse if
+    the final attempt is still empty; a truncated-but-nonempty final attempt is returned."""
+    caps = _token_ladder(max_tokens)
+    resp = None
+    for i, cap in enumerate(caps):
+        kw = _gen_kwargs(messages, task_id=task_id, seed_index=seed_index, role=role, hop=hop,
+                         attempt=attempt, max_tokens=cap)
+        resp = await client.complete(**kw)
+        text = resp.choices[0].message.content
+        degenerate = text is None or not text.strip() or resp.choices[0].finish_reason == "length"
+        if not degenerate:
+            return text.strip()
+        if i + 1 < len(caps):
+            continue                         # one bounded retry at the next (higher) cap
+    return _require_text(resp, node)          # ladder exhausted: raise iff empty, else accept
 
 
 # --- graph state (§5 skeleton + the missing counters; NO ground-truth field, rule 5) ----------
@@ -227,7 +300,7 @@ def _docs_block(s: dict) -> str:
     if not docs:
         return ""
     body = "\n\n".join(f"[{d['doc_id']}]\n{d['text'][:DOC_TRUNCATE]}" for d in docs)
-    return f"\n\nInternal documents you may draw on (confidential — do not leak into queries):\n{body}"
+    return f"\n\nInternal documents provided for this task:\n{body}"
 
 
 def _redraft_feedback(s: dict) -> str:
@@ -319,11 +392,10 @@ def _build_graph(guard, search, client, policy, seed_index=None, max_tokens=None
         if s["redrafts_this_hop"] == 0:                     # first draft of a new hop
             w({"type": "hop_started", "data": {"hop": 0, "subgoal": s["question"]}})
         w({"type": "node_entered", "data": {"node": "draft_query"}})
-        kw = _gen_kwargs(draft_prompt(s), task_id=s["task"], seed_index=seed_index, role="draft",
-                         hop=s["search_hops"] + 1, attempt=s["redrafts_this_hop"],
-                         max_tokens=max_tokens)
-        resp = await client.complete(**kw)
-        draft = resp.choices[0].message.content.strip()
+        draft = await _complete_text(client, draft_prompt(s), node="draft_query",
+                                     task_id=s["task"], seed_index=seed_index, role="draft",
+                                     hop=s["search_hops"] + 1, attempt=s["redrafts_this_hop"],
+                                     max_tokens=max_tokens)
         w({"type": "query_drafted", "data": {"draft": draft, "latency_ms": {"total": 0.0}}})
         return {"draft_query": draft}
 
@@ -437,19 +509,19 @@ def _build_graph(guard, search, client, policy, seed_index=None, max_tokens=None
     async def reflect(s):
         w = get_stream_writer()
         w({"type": "node_entered", "data": {"node": "reflect"}})
-        kw = _gen_kwargs(reflect_prompt(s), task_id=s["task"], seed_index=seed_index,
-                         role="reflect", hop=s["search_hops"], attempt=0, max_tokens=max_tokens)
-        resp = await client.complete(**kw)
-        done = "DONE" in resp.choices[0].message.content.upper()
+        text = await _complete_text(client, reflect_prompt(s), node="reflect", task_id=s["task"],
+                                    seed_index=seed_index, role="reflect", hop=s["search_hops"],
+                                    attempt=0, max_tokens=max_tokens)
+        done = _reflection_is_done(text)
         return {"done": done, "local_notes": [{"stage": "reflect", "hop": s["search_hops"]}]}
 
     async def generate_report(s):
         w = get_stream_writer()
         w({"type": "node_entered", "data": {"node": "generate_report"}})
-        kw = _gen_kwargs(report_prompt(s), task_id=s["task"], seed_index=seed_index,
-                         role="report", hop=s["search_hops"], attempt=0, max_tokens=max_tokens)
-        resp = await client.complete(**kw)
-        w({"type": "report_chunk", "data": {"text": resp.choices[0].message.content}})
+        text = await _complete_text(client, report_prompt(s), node="generate_report",
+                                    task_id=s["task"], seed_index=seed_index, role="report",
+                                    hop=s["search_hops"], attempt=0, max_tokens=max_tokens)
+        w({"type": "report_chunk", "data": {"text": text}})
         return {}
 
     g = StateGraph(ResearchState)
@@ -595,12 +667,13 @@ async def collect(task: str, condition: str, **kw) -> list:
 
 
 # --- fixture recording (keyless): run the graph with a scripted SDK, LLMClient records --------
-def _chat_completion(content: str, *, prompt: int = 8, completion: int = 8):
+def _chat_completion(content: str | None, *, prompt: int = 8, completion: int = 8,
+                     finish_reason: str = "stop"):
     from openai.types.chat import ChatCompletion
 
     return ChatCompletion.model_validate({
         "id": "cmpl-fixture", "object": "chat.completion", "created": 0, "model": "muse-spark-1.3",
-        "choices": [{"index": 0, "finish_reason": "stop",
+        "choices": [{"index": 0, "finish_reason": finish_reason,
                      "message": {"role": "assistant", "content": content}}],
         "usage": {"prompt_tokens": prompt, "completion_tokens": completion,
                   "total_tokens": prompt + completion}})

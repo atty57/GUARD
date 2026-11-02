@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -60,6 +61,20 @@ def _price(usage: Any) -> float:
     return (uncached * _PRICE_IN + cached * _PRICE_CACHED + completion * _PRICE_OUT) / 1e6
 
 
+def _input_token_bound(request: dict) -> int:
+    """Bound our text-only chat input by UTF-8 bytes plus protocol framing.
+
+    Counting every serialized byte as a token is deliberately conservative. Reserve
+    additional framing per message, and reject content that needs a different bound.
+    """
+    messages = request.get("messages", [])
+    if any(not isinstance(m.get("content"), str) for m in messages):
+        raise ValueError("bounded calls require text-only message content")
+    if request.get("tools") or request.get("functions"):
+        raise ValueError("bounded calls do not support tools or functions")
+    return len(json.dumps(request, ensure_ascii=True).encode("utf-8")) + 1024 + 256 * len(messages)
+
+
 def _to_completion(data: dict):
     """Rebuild an openai ChatCompletion from a recorded dict, so replay and live match type."""
     from openai.types.chat import ChatCompletion
@@ -82,9 +97,14 @@ class LLMClient:
         self.api_key = api_key if api_key is not None else os.getenv("MODEL_API_KEY", "")
         self.max_usd = float(max_usd if max_usd is not None
                              else os.getenv("MAX_USD_PER_RUN", "0.50"))
+        if not math.isfinite(self.max_usd) or self.max_usd < 0:
+            raise ValueError("max_usd must be finite and nonnegative")
         self.record_path = Path(record_path) if record_path else _DEFAULT_RECORD
         self.max_retries = max_retries
         self.cost_usd = 0.0
+        # A failed/cancelled request may be billed without returning usage. Its allowance
+        # remains reserved and is persisted separately from measured cost by the runner.
+        self.uncertain_usd = 0.0
         self.tokens_in = 0
         self.tokens_out = 0
         self._client = None                 # lazily built AsyncOpenAI (never in replay)
@@ -120,7 +140,7 @@ class LLMClient:
 
     async def complete(self, **kwargs):
         """One chat completion. kwargs are OpenAI chat params (messages, temperature, ...)."""
-        if self.cost_usd >= self.max_usd:
+        if self.mode != "replay" and self.cost_usd + self.uncertain_usd >= self.max_usd:
             raise BudgetExceeded(
                 f"accrued ${self.cost_usd:.4f} >= cap ${self.max_usd:.4f}; refusing further calls")
         request = {"model": self.model, **kwargs}
@@ -133,17 +153,32 @@ class LLMClient:
                     f"no recording for request key {key[:12]}... in {self.record_path}")
             return _to_completion(cache[key])
 
-        # G4: bound a single call's worst case so one response can't blow the per-run cap.
-        # Output tokens dominate price and are the only unbounded term (input is our prompt).
         max_tokens = kwargs.get("max_tokens")
+        allowance = None
         if max_tokens is not None:
-            projected = self.cost_usd + max_tokens * _PRICE_OUT / 1e6
+            if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens <= 0:
+                raise ValueError("max_tokens must be a positive integer")
+            allowance = (_input_token_bound(request) * _PRICE_IN + max_tokens * _PRICE_OUT) / 1e6
+            projected = self.cost_usd + self.uncertain_usd + allowance
             if projected > self.max_usd:
                 raise BudgetExceeded(
-                    f"projected ${projected:.4f} (accrued ${self.cost_usd:.4f} + "
-                    f"{max_tokens} out tok) > cap ${self.max_usd:.4f}; refusing call")
+                    f"projected ${projected:.6f} including input and output > "
+                    f"cap ${self.max_usd:.6f}; refusing call")
 
-        resp = await self._sdk().chat.completions.create(**request)
+        sdk = self._sdk()
+        if allowance is not None and hasattr(sdk, "with_options"):
+            # A retry can bill the timed-out request too, without returning its usage.
+            # Bounded attempts fail instead and retain their conservative reservation.
+            sdk = sdk.with_options(max_retries=0)
+        try:
+            resp = await sdk.chat.completions.create(**request)
+        except BaseException:
+            self.uncertain_usd += allowance if allowance is not None else max(
+                0.0, self.max_usd - self.cost_usd - self.uncertain_usd)
+            raise
+        if resp.usage is None:
+            self.uncertain_usd += allowance if allowance is not None else max(
+                0.0, self.max_usd - self.cost_usd - self.uncertain_usd)
         self.tokens_in += _field(resp.usage, "prompt_tokens")
         self.tokens_out += _field(resp.usage, "completion_tokens")
         self.cost_usd += _price(resp.usage)
