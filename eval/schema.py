@@ -7,9 +7,12 @@ the recorded runs. Until results land, the committed file holds placeholder numb
 What is in it follows PLAN §10:
 
 - ``conditions``: the 2×2 ablation at the policy's own ``tau``, one entry per condition.
-- ``tau_sweep``: the ``moat`` condition at five ``tau`` values, for the slider.
+- ``tau_sweep``: the ``moat`` condition at several ``tau`` values, for the slider. Empty until
+  the sweep has run.
 - ``attacks``: the scripted attack suite, recall per leak type; ``benign``: false-positive rate
-  on the controls.
+  on the controls. Empty / null until the suite has run.
+- ``utility.citation_recall`` is null while gold patents are unlabelled, ``utility.rubric``
+  while no judge has scored the reports.
 - ``comparisons``: paired tests between conditions, Holm-corrected.
 - ``latency_ms``: per guard tier.
 
@@ -89,8 +92,9 @@ class Leakage(_M):
 
 
 class Utility(_M):
-    citation_recall: Share                 # planted gold patents cited in the report
-    rubric: Share                          # blind LLM judge score, scaled to [0, 1]
+    # None until the input exists: gold patents not labelled yet, or no judge run.
+    citation_recall: Share | None = None   # planted gold patents cited in the report
+    rubric: Share | None = None            # LLM judge score of the report, scaled to [0, 1]
 
 
 class Flow(_M):
@@ -156,7 +160,7 @@ class EvalResults(_M):
     conditions: list[ConditionResult]
     tau_sweep: list[ConditionResult]
     attacks: list[AttackResult]
-    benign: BenignResult
+    benign: BenignResult | None = None     # None until the attack suite has run
     comparisons: list[Comparison]
     latency_ms: dict[Literal["tier0", "tier1", "tier2", "total"], Latency]
     tier2_escalation_rate: float = Field(ge=0, le=1)
@@ -169,13 +173,16 @@ class EvalResults(_M):
             raise ValueError(f"conditions must be exactly {CONDITIONS} once each, got {conds}")
         if len({c.tau for c in self.conditions}) != 1:
             raise ValueError("the 2×2 conditions must share one tau")
+        # The sweep may be missing (not run yet). When present: ascending, distinct, moat
+        # only, and it includes the 2x2's own tau so the slider passes through that point.
         taus = [p.tau for p in self.tau_sweep]
-        if len(taus) != 5 or taus != sorted(set(taus)):
-            raise ValueError("tau_sweep needs 5 distinct tau values in ascending order")
-        if any(p.condition != "moat" for p in self.tau_sweep):
-            raise ValueError("tau_sweep runs the moat condition only")
-        if self.conditions[0].tau not in taus:
-            raise ValueError("tau_sweep must include the conditions' tau")
+        if taus:
+            if len(taus) < 2 or taus != sorted(set(taus)):
+                raise ValueError("tau_sweep needs 2+ distinct tau values in ascending order")
+            if any(p.condition != "moat" for p in self.tau_sweep):
+                raise ValueError("tau_sweep runs the moat condition only")
+            if self.conditions[0].tau not in taus:
+                raise ValueError("tau_sweep must include the conditions' tau")
         kinds = [a.leak_type for a in self.attacks]
         if len(kinds) != len(set(kinds)):
             raise ValueError("one attacks entry per leak type")
