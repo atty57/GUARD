@@ -27,6 +27,7 @@ class Scripted:
     async def complete(self, **kw):
         from agent.graph import _chat_completion
         self.calls.append(kw)
+        await asyncio.sleep(0)                           # let concurrent checks interleave
         if self.raises:
             raise self.raises
         text, finish = self.replies.pop(0) if self.replies else ("", "stop")
@@ -37,10 +38,13 @@ class Scripted:
 def client():
     def make(*replies, **kw):
         c = Scripted(*replies, **kw)
-        tier2.configure(c)
+        tokens.append(tier2.configure(c))
         return c
+    tokens = []
     yield make
-    tier2.configure(None)
+    for t in reversed(tokens):
+        tier2.reset(t)
+    assert not tier2.enabled()
 
 
 def run(draft, policy, history=()):
@@ -128,3 +132,21 @@ def test_rewrite_fits_the_event_contract(policy, client):
                       diff=[{"op": "delete", "text": "272 Wh/kg"}], leak_types=r.leak_types,
                       secrets_touched=r.secrets_touched, reasons=r.reasons,
                       latency_ms=r.latency_ms, rechecked=r.rechecked)
+
+
+def test_client_is_task_local(policy):
+    # concurrent runs each see only their own client (eval/run.py runs cells concurrently)
+    async def one(query):
+        c = Scripted(('{"query": "%s"}' % query, "stop"))
+        token = tier2.configure(c)
+        try:
+            return (await check(LEAKY, [], policy)).query, len(c.calls)
+        finally:
+            tier2.reset(token)
+
+    async def both():
+        return await asyncio.gather(one("high energy density pouch cell patents"),
+                                    one("pouch cell cathode calcination patents"))
+    assert asyncio.run(both()) == [("high energy density pouch cell patents", 1),
+                                   ("pouch cell cathode calcination patents", 1)]
+    assert not tier2.enabled()
