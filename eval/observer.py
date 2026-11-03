@@ -50,7 +50,11 @@ class Estimate:
     numeric: dict[str, dict[str, float]] = field(default_factory=dict)   # id -> point, p10, p90
     names: dict[str, str] = field(default_factory=dict)                  # id -> guess
     intent: str = ""
-    parsed: bool = True                                                  # False = fell back
+    missing: list[str] = field(default_factory=list)                     # ids the reply lacked
+
+    @property
+    def parsed(self) -> bool:
+        return not self.missing
 
 
 def public_view(secrets: list[dict]) -> list[dict]:
@@ -74,7 +78,7 @@ def build_messages(company: str, product: str, secrets: list[dict], queries: lis
         f"Parameters to estimate:\n" + "\n".join(lines) + "\n\n"
         'Reply with JSON of this shape:\n'
         '{"numeric": {"<id>": {"point": number, "p10": number, "p90": number}},\n'
-        ' "names": {"<id>": "your best guess"},\n'
+        ' "names": {"<id>": "one best guess, no alternatives"},\n'
         ' "intent": "one sentence: what they were researching"}\n'
         "Give every numeric parameter a point estimate and an 80% range (p10 <= point <= p90)."
     )
@@ -105,10 +109,10 @@ def _num(x) -> float | None:
 
 
 def parse(text: str, secrets: list[dict]) -> Estimate:
-    """Read the model's JSON. Anything missing or malformed falls back to the middle of the
-    public range (numeric) or an empty guess (names), and ``parsed`` is set to False."""
+    """Read the model's JSON. A missing or malformed entry is filled with the middle of the
+    public range (numeric) or an empty guess (names) and listed in ``missing``, so the scorer can
+    exclude the reply instead of scoring a guess the model never made."""
     data = _json_block(text) or {}
-    ok = bool(data)
     est = Estimate(intent=str(data.get("intent") or "").strip())
     num = data.get("numeric") if isinstance(data.get("numeric"), dict) else {}
     names = data.get("names") if isinstance(data.get("names"), dict) else {}
@@ -119,7 +123,7 @@ def parse(text: str, secrets: list[dict]) -> Estimate:
             row = num.get(sid) if isinstance(num.get(sid), dict) else {}
             point, p10, p90 = (_num(row.get(k)) for k in ("point", "p10", "p90"))
             if point is None:
-                ok = False
+                est.missing.append(sid)
                 point = (lo + hi) / 2
             p10 = point if p10 is None else p10
             p90 = point if p90 is None else p90
@@ -131,10 +135,9 @@ def parse(text: str, secrets: list[dict]) -> Estimate:
         else:
             g = names.get(sid)
             if not isinstance(g, str) or not g.strip():
-                ok = False
+                est.missing.append(sid)
                 g = ""
             est.names[sid] = g.strip()
-    est.parsed = ok
     return est
 
 

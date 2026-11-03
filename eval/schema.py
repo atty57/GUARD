@@ -90,7 +90,9 @@ class Leakage(_M):
     bits: NonNegative                      # ledger bits, summed over secrets
     hit_within_2pct: Share                 # share of numeric secrets the observer guessed within ±2%
     categorical_gain: Estimate             # exact-match rate on name secrets, minus the empty-log rate
-    intent_similarity: Share               # observer's guess of the task vs the real task
+    # Word overlap of the observer's one-line guess with the task question. Raw, not a gain over
+    # the empty-log guess: knowing the company alone already earns some overlap.
+    intent_similarity: Share
 
 
 class Utility(_M):
@@ -154,6 +156,15 @@ class ExternalPoint(_M):
     note: str = ""
 
 
+class Quality(_M):
+    """How much of the input made it into the numbers. Anything but zeros needs a look."""
+
+    runs_scored: int = Field(ge=0)
+    runs_excluded: int = Field(ge=0)       # observer reply incomplete, so the run was left out
+    observer_failures: int = Field(ge=0)   # incomplete observer replies (distinct query logs)
+    judge_failures: int = Field(ge=0)      # rubric replies without a 1-5 score
+
+
 class Models(_M):
     agent: str
     observer: str
@@ -179,6 +190,7 @@ class EvalResults(_M):
     benign: BenignResult | None = None     # None until the attack suite has run
     comparisons: list[Comparison]
     external_reference: list[ExternalPoint] = Field(default_factory=list)
+    quality: Quality | None = None         # set by eval/score.py; None in the placeholder
     latency_ms: dict[Literal["tier0", "tier1", "tier2", "total"], Latency]
     tier2_escalation_rate: float = Field(ge=0, le=1)
     cost_usd: float = Field(ge=0)

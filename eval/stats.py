@@ -94,3 +94,14 @@ def holm(ps: list[float]) -> list[float]:
         running = max(running, (m - k) * ps[i])
         out[i] = min(1.0, running)
     return out
+
+
+def mcnemar(b: int, c: int) -> float:
+    """Exact two-sided McNemar test on discordant pairs: ``b`` = a hit / b missed,
+    ``c`` = a missed / b hit. Binomial(b + c, 0.5); 1.0 when there are no discordant pairs."""
+    n = b + c
+    if n == 0:
+        return 1.0
+    k = min(b, c)
+    tail = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
+    return min(1.0, 2 * tail)
