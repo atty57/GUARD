@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import guard.check as moat_guard  # Hyeseong's real guard (the module with async check())
@@ -26,6 +26,9 @@ POLICY_PATH = Path(__file__).resolve().parent.parent / "data" / "policy.example.
 # Recorded model answers, so a live run works with no API key (LLM_MODE=replay, the default).
 # Only covers task "demo" for now; other tasks fail closed until a key or more recordings exist.
 LLM_FIXTURE = Path(__file__).resolve().parent.parent / "runs" / "recordings" / "llm_demo.jsonl"
+# Experiment results for the dashboard (S5). Written by Hyeseong's eval/score.py; until the real
+# run lands it holds placeholder numbers with "placeholder": true. Format: eval/schema.py.
+EVAL_RESULTS = Path(__file__).resolve().parent.parent / "eval" / "eval_results.json"
 # The built React app (`npm run build` in web/). Only there after a build, e.g. `make demo`.
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 
@@ -33,6 +36,33 @@ WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+NO_CACHE = {"Cache-Control": "no-cache"}
+
+
+@app.get("/api/eval")
+def eval_results():
+    """The experiment results the dashboard shows, checked against the moat.eval.v1 schema.
+
+    Read from disk on every request, so a new eval_results.json shows up without a restart.
+    Every answer says "no-cache", so the browser asks again each time instead of reusing an old
+    answer (it had kept a 404 from when the file was missing).
+    """
+    if not EVAL_RESULTS.is_file():
+        raise HTTPException(status_code=404, detail="No eval results yet (eval/eval_results.json)",
+                            headers=NO_CACHE)
+    # Imported here rather than at the top, so the rest of the API still starts on a checkout
+    # without eval/schema.py (Hyeseong's #53).
+    from pydantic import ValidationError
+    from eval.schema import load_results
+    try:
+        results = load_results(EVAL_RESULTS)
+    except ValidationError as exc:
+        # A results file that doesn't match the schema is a bug to fix, not something to show.
+        raise HTTPException(status_code=500, headers=NO_CACHE,
+                            detail=f"eval_results.json doesn't match moat.eval.v1: {exc}") from exc
+    return JSONResponse(results.model_dump(mode="json", by_alias=True), headers=NO_CACHE)
 
 
 # --- Replay a recorded run in the moat.v2 SSE format ---

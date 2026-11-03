@@ -1,6 +1,7 @@
 // One guard decision: the badge, what the agent drafted, and what actually left.
 import type { DiffOp, GuardDecisionEvent } from '../types'
 import { Badge } from '@/components/ui/badge'
+import { LEAK_LABEL } from '@/lib/labels'
 
 type Decision = GuardDecisionEvent['data']
 
@@ -10,12 +11,6 @@ const DECISION_STYLE = {
   block: { label: 'BLOCKED', className: 'bg-red-500/15 text-red-400' },
 } as const
 
-// Readable names for the contract's leak types (INTERFACES.md §3 vocabulary).
-const LEAK_LABEL: Record<string, string> = {
-  exact_value: 'exact value', unit_change: 'unit change', range: 'range', split: 'split across queries',
-  derived: 'derived value', relative: 'relative', encoding: 'encoding',
-  process_fingerprint: 'process fingerprint', identifier: 'identifier', intent_profile: 'intent profile',
-}
 
 export function DecisionRow({ decision }: { decision: Decision }) {
   const style = DECISION_STYLE[decision.decision]
