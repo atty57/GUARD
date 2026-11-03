@@ -56,11 +56,22 @@ export type Comparison = {
 
 export type Latency = { p50: number; p95: number }
 
+// A published result shown for reference only (e.g. MosaicLeaks). It uses a different leakage
+// measure, so it's never compared with our numbers.
+export type ExternalPoint = { source: string; label: string; leakage: number; utility: number | null; note: string }
+
+// How much of the input made it into the numbers. Anything but zeros needs a look.
+export type Quality = { runs_scored: number; runs_excluded: number; observer_failures: number; judge_failures: number }
+
 export type EvalResults = {
   schema: 'moat.eval.v1'
   placeholder: boolean          // true = made-up numbers until the real eval run lands
   generated_at: string
   split: 'dev' | 'test'
+  // Added in #59; optional so older files still load.
+  setting?: 'labeled' | 'unlabeled' | null   // docs with or without the CONFIDENTIAL label (#11)
+  external_reference?: ExternalPoint[]
+  quality?: Quality | null
   n_tasks: number
   n_seeds: number
   corpus_sha: string
