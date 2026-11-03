@@ -61,6 +61,8 @@ def test_safe_rewrite_goes_out_rechecked(policy, client):
     assert r.leak_types == ["exact_value"] and r.secrets_touched == ["S1"]
     assert set(r.latency_ms) == {"tier0", "tier2", "total"}       # Tier 1 never ran on the draft
     assert len(c.calls) == 1
+    assert c.calls[0]["reasoning_effort"] == "low"                # PLAN §8
+    assert c.calls[0]["response_format"]["type"] == "json_schema"
 
 
 def test_rewrite_that_still_leaks_is_blocked(policy, client):

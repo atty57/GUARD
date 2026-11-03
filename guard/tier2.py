@@ -27,6 +27,9 @@ import re
 
 _CLIENT = None
 MAX_TOKENS = 1024                      # retried once at double, like the agent graph (4k->8k rule)
+REASONING_EFFORT = "low"               # PLAN §8; checked against the Meta API
+RESPONSE_FORMAT = {"type": "json_schema", "json_schema": {"name": "rewrite", "schema": {
+    "type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}}
 
 SYSTEM = (
     "You rewrite web search queries for an R&D team so they reveal less about the team's own "
@@ -86,7 +89,9 @@ async def rewrite(draft: str, reasons: list[str], attributes: list[str], *, seed
     msgs = build_messages(draft, reasons, attributes)
     text = ""
     for cap in (MAX_TOKENS, MAX_TOKENS * 2):
-        resp = await _CLIENT.complete(messages=msgs, temperature=0, seed=seed, max_tokens=cap)
+        resp = await _CLIENT.complete(messages=msgs, temperature=0, seed=seed, max_tokens=cap,
+                                      reasoning_effort=REASONING_EFFORT,
+                                      response_format=RESPONSE_FORMAT)
         choice = resp.choices[0] if resp.choices else None
         text = (choice.message.content or "") if choice else ""
         if text.strip() and choice.finish_reason != "length":
