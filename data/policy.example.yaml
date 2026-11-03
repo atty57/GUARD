@@ -9,6 +9,7 @@ bound_tol: 0.03
 max_bits: 3.0
 k_min: 5
 profile_catalog: data/profile_catalog.example.yaml
+identifiers: [Halden, HX-9]
 
 secrets:
   - {secret_id: S1, kind: numeric, dim: energy_density, unit: Wh/kg, value: 272,

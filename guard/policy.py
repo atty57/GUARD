@@ -98,6 +98,10 @@ class Policy(_M):
     # candidate-product catalog for the profile check (guard/profile.py), relative to the repo
     # root; None turns the check off
     profile_catalog: str | None = None
+    # Company and product names. A query that names them tells the search provider whose
+    # research it is, which the profile check assumes the observer does not know. Tier 0
+    # blocks them as `identifier`, ignoring case and a hyphen or space ("HX-9", "hx 9").
+    identifiers: list[str] = Field(default_factory=list)
     secrets: list[SecretSpec]
 
     @model_validator(mode="after")
@@ -170,8 +174,10 @@ def policy_hash(policy: Policy) -> str:
     """Stable hash for `run_started.policy_hash`. Covers the profile catalog's contents too,
     since editing the catalog changes what the guard blocks."""
     h = hashlib.sha256()
-    h.update(json.dumps(policy.model_dump(mode="json"), sort_keys=True,
-                        separators=(",", ":")).encode())
+    dumped = policy.model_dump(mode="json")
+    if not dumped["identifiers"]:
+        dumped.pop("identifiers")      # policies without names keep their earlier hash
+    h.update(json.dumps(dumped, sort_keys=True, separators=(",", ":")).encode())
     if policy.profile_catalog:
         cat = Path(policy.profile_catalog)
         h.update((cat if cat.is_absolute() else _REPO / cat).read_bytes())
