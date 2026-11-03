@@ -9,7 +9,8 @@ Tier 0, the value firewall, blocks a draft that states a secret outright:
 - ``exact_value``: the secret's value in its own unit, within tolerance ("270 Wh/kg" vs 272),
   or a listed equivalent form ("NCM 88/06/06").
 - ``unit_change``: the same value in another unit ("0.272 kWh/kg", "1018 K", "720 min").
-- ``identifier``: a name secret or one of its aliases ("Ostrava", "3Q27").
+- ``identifier``: a name secret or one of its aliases ("Ostrava", "3Q27"), or the company or
+  product name from ``policy.identifiers`` ("Halden", "HX-9").
 
 Tier 1 looks at the whole session (``history`` = queries that actually left):
 
@@ -132,12 +133,26 @@ def _alias_hits(s: SecretSpec, text: str):
             yield "identifier" if s.kind == "name" else "exact_value"
 
 
+def _name_pattern(name: str) -> str:
+    """"HX-9" also matches "HX 9" and "HX9"; word boundaries on both sides."""
+    parts = [re.escape(p) for p in re.split(r"[-\s]+", name.strip()) if p]
+    sep = r"[-\s]?"
+    return r"(?<![A-Za-z0-9])" + sep.join(parts) + r"(?![A-Za-z0-9])"
+
+
+def names_company_or_product(draft: str, policy: Policy) -> bool:
+    return any(re.search(_name_pattern(n), draft, re.I) for n in policy.identifiers)
+
+
 def tier0(draft: str, policy: Policy) -> tuple[list[str], list[str], list[str]]:
     """Return (leak_types, secrets_touched, reasons) for a single draft."""
     quantities = extract_quantities(draft)
     leak_types: list[str] = []
     touched: list[str] = []
     reasons: list[str] = []
+    if names_company_or_product(draft, policy):
+        leak_types.append("identifier")
+        reasons.append("identifier: this query names the company or product")
     for s in policy.secrets:
         hits = list(_point_hits(policy, s, quantities, draft)) if s.kind == "numeric" else []
         if not hits:
@@ -189,7 +204,7 @@ async def check(draft: str, history: list[SentQuery] | list[dict], policy: Polic
     leak_types, touched, reasons = tier0(draft, policy)
     t1 = time.perf_counter()
     latency = {"tier0": round((t1 - t0) * 1000, 3)}
-    if touched:
+    if leak_types:
         latency["total"] = latency["tier0"]
         return GuardResult(action="block", query=None, tier=0, block_kind="redraftable",
                            leak_types=leak_types, secrets_touched=touched, reasons=reasons,
