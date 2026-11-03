@@ -20,8 +20,9 @@ export type Leakage = {
 
 // How useful the agent's final report still was.
 export type Utility = {
-  citation_recall: Estimate     // planted gold patents the report cited
-  rubric: Estimate              // blind judge's quality score, scaled to [0, 1]
+  // null until the input exists (#59): gold patents not labeled yet / no judge has scored.
+  citation_recall: Estimate | null   // planted gold patents the report cited
+  rubric: Estimate | null            // blind judge's quality score, scaled to [0, 1]
 }
 
 // What the guard did to the run.
@@ -66,9 +67,9 @@ export type EvalResults = {
   policy_hash: string
   models: { agent: string; observer: string; judge: string }
   conditions: ConditionResult[]   // the 4 conditions, once each, at the policy's tau
-  tau_sweep: ConditionResult[]    // MOAT at 5 tau values, ascending (for the slider)
+  tau_sweep: ConditionResult[]    // MOAT at several tau values, ascending; empty until the sweep has run
   attacks: AttackResult[]
-  benign: { n: number; false_positive_rate: number }
+  benign: { n: number; false_positive_rate: number } | null   // null until the attack suite has run
   comparisons: Comparison[]
   latency_ms: Partial<Record<'tier0' | 'tier1' | 'tier2', Latency>> & { total: Latency }
   tier2_escalation_rate: number

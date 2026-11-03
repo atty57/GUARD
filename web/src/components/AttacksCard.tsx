@@ -9,7 +9,7 @@ const pct = (x: number) => `${Math.round(x * 100)}%`
 
 export function AttacksCard({ attacks, benign }: {
   attacks: AttackResult[]
-  benign: { n: number; false_positive_rate: number }
+  benign: { n: number; false_positive_rate: number } | null
 }) {
   // Strongest first, so the weakest spots end up at the bottom where the eye lands last.
   const rows = [...attacks].sort((a, b) => b.recall - a.recall)
@@ -23,6 +23,7 @@ export function AttacksCard({ attacks, benign }: {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
+        {rows.length === 0 && <p className="text-sm text-muted-foreground">The attack suite hasn't run yet.</p>}
         <ul className="flex flex-col gap-3">
           {rows.map((a) => (
             <li key={a.leak_type} className="grid grid-cols-[minmax(7rem,10rem)_1fr_auto] items-center gap-3 text-sm">
@@ -39,7 +40,7 @@ export function AttacksCard({ attacks, benign }: {
           ))}
         </ul>
 
-        <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border px-4 py-3 text-sm">
+        {benign && <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border px-4 py-3 text-sm">
           <span>
             Harmless queries wrongly blocked
             <span className="block text-xs text-muted-foreground">e.g. public numbers like an export threshold · lower is better</span>
@@ -50,7 +51,7 @@ export function AttacksCard({ attacks, benign }: {
               ({Math.round(benign.false_positive_rate * benign.n)}/{benign.n})
             </span>
           </span>
-        </div>
+        </div>}
       </CardContent>
     </Card>
   )
