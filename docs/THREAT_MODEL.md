@@ -28,7 +28,7 @@ A query is disclosed the moment it is handed to `search()` (INTERFACES §2). Eve
 | --- | --- |
 | The host running the agent and guard | The search provider and anyone holding its query logs |
 | Internal docs, the policy file and the profile catalog | Content returned by search (may carry injected instructions) |
-| The model provider (Meta Model API, standard tier; never the `-contributor` tier, per PLAN §4) | |
+| The model provider (Meta Model API; never the `-contributor` tier, per PLAN §4) | |
 
 Meta's built-in `web_search` tool runs server-side and would bypass the guard, so the agent never uses it (PLAN §4).
 
@@ -67,19 +67,19 @@ Leak types use the frozen `LeakType` vocabulary (INTERFACES §3).
 | `exact_value` | "270 Wh/kg" (secret 272) | Tier 0: value within `bound_tol` | done (H3, #18) |
 | `unit_change` | "0.272 kWh/kg", "1018 K" | Tier 0: unit conversion | done (H3, #18) |
 | `identifier` | "Ostrava", "3Q27" | Tier 0: names and aliases | done (H3, #18) |
-| `range` | "260–280 Wh/kg", "above 265 Wh/kg", "below 265 Wh/kg" (value under the line) | Tier 1 ledger: width, bits, threshold side | H5 (#20), in review |
-| `split` | "above 250 Wh/kg" then "below 280 Wh/kg" | Tier 1 ledger: cumulative interval over sent queries | H5 (#20), in review |
-| `intent_profile` | "high-nickel pouch … European OEM" then "silicon anode … SOP 2027" | Tier 1 profile check: candidate products that fit, `k_min` | H5 (#20), in review |
+| `range` | "260–280 Wh/kg", "above 265 Wh/kg", "below 265 Wh/kg" (value under the line) | Tier 1 ledger: width, bits, threshold side | done (H5, #47) |
+| `split` | "above 250 Wh/kg" then "below 280 Wh/kg" | Tier 1 ledger: cumulative interval over sent queries | done (H5, #47) |
+| `intent_profile` | "high-nickel pouch … European OEM" then "silicon anode … SOP 2027" | Tier 1 profile check: candidate products that fit, `k_min` | done (H5, #47) |
 | `exact_value` (approximation) | "approximately 640 mAh/g" (secret 620, just outside `bound_tol`) | H4 (#19) | planned |
 | `derived`, `relative` | "5 Ah, 3.65 V, 68 g" → 268 Wh/kg | H4 (#19) | planned |
 | `encoding` | "two hundred seventy Wh/kg" | H4 (#19) | planned |
 | `process_fingerprint` | temperature + dopant + atmosphere together | — | planned, unassigned |
 
-Known gaps in the parser today: unitless numbers and ratios ("0.88 nickel ratio"), a bare "C" for Celsius ("745C"), and bounds without a unit.
+Known gaps in the parser today: unitless numbers and ratios ("0.88 nickel ratio"), a bare "C" for Celsius ("745C"), and bounds without a unit. The company and product names ("Halden", "HX-9") are not in the policy yet, so a query naming them passes.
 
 ## 5. Security properties we claim
 
-P1, P2, P5 and P6 describe `guard.check`. The agent graph still defaults to a pass-through `StubGuard` (`agent/graph.py`) until the real guard is wired in; until then they hold only where `guard.check` is passed in.
+P1, P2, P5 and P6 describe `guard.check`, which the agent graph uses by default since #45.
 
 | ID | Property | Enforced by | Tested in |
 | --- | --- | --- | --- |
@@ -101,7 +101,7 @@ Event logs are inside the boundary: `guard_decision.original` records the blocke
 | Priors and min widths are design choices (DATA_SPEC §2) | Results depend on them | `tau` sweep (one knob scales all min widths and the bits budget) |
 | All queries in a run are linkable; the ledger is per run | Leaks spread across separate sessions are not tracked | Out of scope (§7) |
 | The candidate-product catalog stands in for the market an observer knows | `k` is only as good as the catalog; a small catalog over-blocks, a padded one under-blocks. The catalog also holds our product's true profile, so it is as sensitive as the policy | Catalog is a reviewed data file per company (`data/profile_catalog.*.yaml`); its contents are part of `policy_hash` |
-| The model provider is trusted | Prompts and docs reach Meta's API | Standard tier only; a self-hosted open-weight model would remove this assumption |
+| The model provider is trusted | Prompts and docs reach Meta's API. On free credits Meta may use content for product improvement | Only synthetic data goes through it; never the `-contributor` tier; a self-hosted open-weight model would remove this assumption |
 
 ## 7. Out of scope
 
