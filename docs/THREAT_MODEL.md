@@ -1,6 +1,6 @@
 # MOAT Threat Model
 
-> **Status:** v1 (2026-10-30). Owner: Hyeseong. Changes to the adversary or the claimed properties need the owner's approval.
+> **Status:** v1 (2026-11-03). Owner: Hyeseong. Changes to the adversary or the claimed properties need the owner's approval.
 
 What we protect, from whom, and what we do and don't claim. Interfaces: `docs/INTERFACES.md`. Secrets and policy values: `docs/DATA_SPEC.md`.
 
@@ -64,9 +64,9 @@ Leak types use the frozen `LeakType` vocabulary (INTERFACES §3).
 
 | Leak type | Example | Control | Status |
 | --- | --- | --- | --- |
-| `exact_value` | "270 Wh/kg" (secret 272) | Tier 0: value within `bound_tol` | done (H3, #18) |
-| `unit_change` | "0.272 kWh/kg", "1018 K" | Tier 0: unit conversion | done (H3, #18) |
-| `identifier` | "Ostrava", "3Q27" | Tier 0: names and aliases | done (H3, #18) |
+| `exact_value` | "270 Wh/kg" (secret 272) | Tier 0: value within `bound_tol` | done (H3, #38) |
+| `unit_change` | "0.272 kWh/kg", "1018 K" | Tier 0: unit conversion | done (H3, #38) |
+| `identifier` | "Ostrava", "3Q27" | Tier 0: names and aliases | done (H3, #38) |
 | `range` | "260–280 Wh/kg", "above 265 Wh/kg", "below 265 Wh/kg" (value under the line) | Tier 1 ledger: width, bits, threshold side | done (H5, #47) |
 | `split` | "above 250 Wh/kg" then "below 280 Wh/kg" | Tier 1 ledger: cumulative interval over sent queries | done (H5, #47) |
 | `intent_profile` | "high-nickel pouch … European OEM" then "silicon anode … SOP 2027" | Tier 1 profile check: candidate products that fit, `k_min` | done (H5, #47) |
@@ -101,6 +101,7 @@ Event logs are inside the boundary: `guard_decision.original` records the blocke
 | Priors and min widths are design choices (DATA_SPEC §2) | Results depend on them | `tau` sweep (one knob scales all min widths and the bits budget) |
 | All queries in a run are linkable; the ledger is per run | Leaks spread across separate sessions are not tracked | Out of scope (§7) |
 | The candidate-product catalog stands in for the market an observer knows | `k` is only as good as the catalog; a small catalog over-blocks, a padded one under-blocks. The catalog also holds our product's true profile, so it is as sensitive as the policy | Catalog is a reviewed data file per company (`data/profile_catalog.*.yaml`); its contents are part of `policy_hash` |
+| The agent model's own caution depends on cues in the docs, such as a CONFIDENTIAL label | In the pilot, the no-guard baseline sent no secret values while the Halden docs carried the label, and leaked part of them once it was removed. Labels are often missing or inconsistent in practice, so a baseline that is safe only when every doc is labeled is not a control | Evaluate every condition on labeled and unlabeled copies of the same docs. MOAT does not read labels |
 | The model provider is trusted | Prompts and docs reach Meta's API. On free credits Meta may use content for product improvement | Only synthetic data goes through it; never the `-contributor` tier; a self-hosted open-weight model would remove this assumption |
 
 ## 7. Out of scope
