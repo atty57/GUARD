@@ -216,8 +216,7 @@ async def judge(client, question: str, report: str, *, seed: int = 0) -> float |
                                         "1 = does not answer, 3 = partly answers with some "
                                         "relevant evidence, 5 = fully answers with specific, "
                                         "relevant patents."}]
-    resp = await client.complete(messages=msgs, temperature=0, seed=seed, max_tokens=200)
-    text = resp.choices[0].message.content if resp.choices else ""
+    text = await obs.complete_text(client, msgs, seed=seed, max_tokens=4096)
     m = re.search(r'"score"\s*:\s*([1-5])', text or "")
     return (int(m.group(1)) - 1) / 4 if m else None
 
@@ -272,7 +271,8 @@ def _tau(run: dict) -> float:
     return float(run["tau"]) if run.get("tau") is not None else 1.0
 
 
-def build_results(scores: list[RunScore], *, models: dict, cost_usd: float, split: str) -> dict:
+def build_results(scores: list[RunScore], *, models: dict, cost_usd: float, split: str,
+                  setting: str | None = None) -> dict:
     base = [s for s in scores if s.run.get("tau") is None]
     by_cond: dict[str, list[RunScore]] = {}
     for s in base:
@@ -305,7 +305,7 @@ def build_results(scores: list[RunScore], *, models: dict, cost_usd: float, spli
     return {
         "schema": "moat.eval.v1", "placeholder": False,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "split": split,
+        "split": split, "setting": setting,
         "n_tasks": len({s.run["task_id"] for s in base}),
         "n_seeds": len({s.run["seed"] for s in base}),
         "corpus_sha": shas[0] if len(shas) == 1 else ",".join(shas),
@@ -323,7 +323,8 @@ def build_results(scores: list[RunScore], *, models: dict, cost_usd: float, spli
 
 # --- driver -------------------------------------------------------------------------------------
 async def score(root: Path, *, client, judge_client=None, manifest: Path, tasks: Path,
-                seed: int = 0, concurrency: int = 4) -> tuple[dict, list[RunScore]]:
+                seed: int = 0, concurrency: int = 4,
+                setting: str | None = None) -> tuple[dict, list[RunScore]]:
     runs = load_runs(root)
     if not runs:
         raise SystemExit(f"no accepted runs under {root}")
@@ -366,7 +367,7 @@ async def score(root: Path, *, client, judge_client=None, manifest: Path, tasks:
     if unparsed:
         print(f"WARN {unparsed}/{len(cache)} observer replies fell back to range midpoints",
               file=sys.stderr)
-    return build_results(scores, models=models, cost_usd=cost,
+    return build_results(scores, models=models, cost_usd=cost, setting=setting,
                          split="test" if split == ["test"] else "dev"), scores
 
 
@@ -378,7 +379,11 @@ def main(argv=None) -> int:
     ap.add_argument("--tasks", type=Path, default=DATA / "tasks.jsonl")
     ap.add_argument("--llm-mode", default="replay", choices=["live", "record", "replay"])
     ap.add_argument("--record", type=Path, default=_REPO / "runs" / "recordings" / "observer.jsonl")
-    ap.add_argument("--max-usd", type=float, default=2.0)
+    ap.add_argument("--max-usd", type=float, default=5.0,
+                    help="spend cap for observer + judge calls (4k->8k retries count against it)")
+    ap.add_argument("--setting", choices=["labeled", "unlabeled"],
+                    help="which copy of the docs these runs used (11/2 sync, #11); score each "
+                         "setting from its own --runs root into its own --out")
     ap.add_argument("--no-judge", action="store_true", help="skip the LLM report rubric")
     args = ap.parse_args(argv)
 
@@ -386,7 +391,8 @@ def main(argv=None) -> int:
     client = LLMClient(mode=args.llm_mode, record_path=args.record, max_usd=args.max_usd)
     results, _ = asyncio.run(score(args.runs, client=client,
                                    judge_client=None if args.no_judge else client,
-                                   manifest=args.manifest, tasks=args.tasks))
+                                   manifest=args.manifest, tasks=args.tasks,
+                                   setting=args.setting))
     EvalResults.model_validate(results)          # never write a file the dashboard can't read
     args.out.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     print(f"OK  {args.out}: {sum(c['n_runs'] for c in results['conditions'])} runs scored, "

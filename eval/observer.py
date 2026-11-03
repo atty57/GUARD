@@ -138,10 +138,23 @@ def parse(text: str, secrets: list[dict]) -> Estimate:
     return est
 
 
+async def complete_text(client, messages: list[dict], *, seed: int, max_tokens: int) -> str:
+    """One model call with the agent graph's retry rule (GEN_RETRY_POLICY "4k->8k.v1"): Muse
+    Spark is a reasoning model and can spend the whole budget on hidden reasoning, so a truncated
+    or empty reply is retried once at double the cap. Returns "" if both attempts come back empty;
+    the caller then falls back and counts it."""
+    text = ""
+    for cap in (max_tokens, max_tokens * 2):
+        resp = await client.complete(messages=messages, temperature=0, seed=seed, max_tokens=cap)
+        choice = resp.choices[0] if resp.choices else None
+        text = (choice.message.content or "") if choice else ""
+        if text.strip() and choice.finish_reason != "length":
+            return text
+    return text
+
+
 async def observe(client, *, company: str, product: str, secrets: list[dict],
-                  queries: list[str], max_tokens: int = 1200, seed: int = 0) -> Estimate:
+                  queries: list[str], max_tokens: int = 4096, seed: int = 0) -> Estimate:
     """One observer call. ``secrets`` may be full manifest rows; only public fields are sent."""
     msgs = build_messages(company, product, secrets, queries)
-    resp = await client.complete(messages=msgs, temperature=0, seed=seed, max_tokens=max_tokens)
-    text = resp.choices[0].message.content if resp.choices else ""
-    return parse(text or "", secrets)
+    return parse(await complete_text(client, msgs, seed=seed, max_tokens=max_tokens), secrets)

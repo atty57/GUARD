@@ -165,6 +165,9 @@ class EvalResults(_M):
     placeholder: bool
     generated_at: datetime
     split: Literal["dev", "test"]
+    # Docs as generated (CONFIDENTIAL label) or the same docs with the label removed (11/2 sync,
+    # #11). Each setting is scored into its own file; None for files from before the split.
+    setting: Literal["labeled", "unlabeled"] | None = None
     n_tasks: int = Field(ge=1)
     n_seeds: int = Field(ge=1)
     corpus_sha: str

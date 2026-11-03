@@ -150,3 +150,28 @@ def test_name_hit_accepts_equivalents():
     assert sc.name_hit("ostrava", s9)
     assert not sc.name_hit("Q4 2027", s10)
     assert not sc.name_hit("", s10)
+
+
+def test_observer_retries_once_on_truncation():
+    from agent.graph import _chat_completion
+
+    class Truncating:
+        def __init__(self):
+            self.caps = []
+
+        async def complete(self, **kw):
+            self.caps.append(kw["max_tokens"])
+            if len(self.caps) == 1:
+                return _chat_completion(None, finish_reason="length")
+            return _chat_completion('{"numeric": {}, "names": {}, "intent": "x"}')
+
+    c = Truncating()
+    est = asyncio.run(obs.observe(c, company="Halden Cells", product="HX-9",
+                                  secrets=HALDEN, queries=[]))
+    assert c.caps == [4096, 8192] and est.intent == "x"
+
+
+def test_setting_is_recorded(runs):
+    results, _ = asyncio.run(sc.score(runs, client=OracleObserver(), manifest=MANIFEST,
+                                      tasks=TASKS, setting="unlabeled"))
+    assert EvalResults.model_validate(results).setting == "unlabeled"
