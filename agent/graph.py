@@ -44,6 +44,7 @@ import asyncio
 import difflib
 import hashlib
 import operator
+import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -67,7 +68,7 @@ _DEFAULT_POLICY = _REPO / "data" / "policy.example.yaml"
 # Bumped whenever prompt text, document truncation, the seed scheme, or the generation/retry
 # policy changes — the eval runner folds it into each run's input fingerprint so stale outputs are
 # re-run (A7 R3 / finding r2-C).
-GRAPH_BEHAVIOR_VERSION = "a7.v4"
+GRAPH_BEHAVIOR_VERSION = "a7.v5"   # a7.v5: final-line 'VERDICT: DONE|CONTINUE' reflection
 DOC_TRUNCATE = 4000                     # per-doc chars included in the draft prompt (feeds r2-C)
 
 # Bounded generation retry: muse-spark-1.3 is a reasoning model that may exhaust its token budget on
@@ -118,16 +119,39 @@ class InvalidReflection(RuntimeError):
     """The reflect step returned something other than exactly DONE or CONTINUE."""
 
 
-def _reflection_is_done(text: str) -> bool:
-    """Reflection must be exactly DONE or CONTINUE (case-insensitive, surrounding whitespace ok).
+# A verdict line is a line that IS the verdict (surrounding whitespace / one trailing period ok) —
+# not a line that merely contains the word. Anchored, so inline/quoted verdicts never match.
+_VERDICT_LINE_RE = re.compile(r"^VERDICT:\s*(DONE|CONTINUE)\.?$", re.IGNORECASE)
 
-    The old ``'DONE' in text`` substring test silently treated any other text — including a verbose
-    reasoning dump or a truncated fragment — as CONTINUE, hiding malformed output. Fail loud instead.
+
+def _reflection_is_done(text: str) -> bool:
+    """Parse the reflection's verdict, preserving strict DONE/CONTINUE semantics.
+
+    The reflect prompt lets the model reason first but requires it to end with a line that is
+    exactly ``VERDICT: DONE`` or ``VERDICT: CONTINUE``. Accepted forms:
+
+    - an exact bare reply of ``DONE``/``CONTINUE`` (the whole message is the verdict), or
+    - a reply whose **final non-empty line is completely a verdict line** ``VERDICT: <DONE|CONTINUE>``.
+
+    A verdict that is quoted, inline in a sentence, or followed by more text is NOT accepted — the
+    final line must be the verdict and nothing else. Conflicting verdict lines (both DONE and
+    CONTINUE anywhere) fail loud. A missing verdict fails loud. Truncated/empty replies are already
+    rejected upstream in ``_complete_text``/``_require_text`` before this runs. Same for every
+    condition.
     """
-    verdict = text.strip().upper()
-    if verdict not in ("DONE", "CONTINUE"):
-        raise InvalidReflection(f"reflect: expected 'DONE' or 'CONTINUE', got {text.strip()[:80]!r}")
-    return verdict == "DONE"
+    t = (text or "").strip()
+    if t.upper() in ("DONE", "CONTINUE"):                 # whole reply is the verdict
+        return t.upper() == "DONE"
+    lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+    found = {m.group(1).upper() for ln in lines if (m := _VERDICT_LINE_RE.match(ln))}
+    if len(found) > 1:                                    # e.g. a DONE line and a CONTINUE line
+        raise InvalidReflection(f"reflect: conflicting verdicts {sorted(found)} in {t[:80]!r}")
+    last = _VERDICT_LINE_RE.match(lines[-1]) if lines else None
+    if last is None:                                      # final line isn't a clean verdict line
+        raise InvalidReflection(
+            "reflect: final non-empty line must be exactly 'VERDICT: DONE' or 'VERDICT: CONTINUE', "
+            f"got {t[:80]!r}")
+    return last.group(1).upper() == "DONE"
 
 
 def _require_text(resp, node: str) -> str:
@@ -333,7 +357,9 @@ def reflect_prompt(s: dict) -> list[dict]:
             {"role": "user", "content": f"Reflect on task {s['question']} after "
                                          f"{s['search_hops']} hops. Search results so far:\n"
                                          f"{_results_block(s)}\n\n"
-                                         f"Do these answer the task? Answer DONE or CONTINUE."}]
+                                         f"Do these results answer the task? Reason briefly if you "
+                                         f"wish, then end your reply with a single line containing "
+                                         f"exactly 'VERDICT: DONE' or 'VERDICT: CONTINUE'."}]
 
 
 def report_prompt(s: dict) -> list[dict]:
