@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from typing import Literal
 from datetime import datetime
 from pathlib import Path
 
@@ -107,8 +108,8 @@ def replay(name: str, delay: float = 0.6):
 
 # --- Live run: actually run the agent and stream its events as they happen ---
 
-async def live_stream(task: str):
-    """Run the baseline lane, then the MOAT lane, through Atharva's agent graph.
+async def live_stream(task: str, baseline: str = "none"):
+    """Run the left lane (No guard or Prompt only), then the MOAT lane, through the agent graph.
 
     We pass the real guard in on purpose: until A6 (#45) merges, the graph's default guard
     is a pass-through stub that lets every query out.
@@ -126,7 +127,7 @@ async def live_stream(task: str):
     name = f"live_{task}_{datetime.now():%Y-%m-%d_%H%M%S}_{group_id[:8]}"
     part = LIVE_DIR / f"{name}.jsonl.part"
     with part.open("w", encoding="utf-8") as recording:
-        async for event in stream_group(task, ["none", "moat"], guard=moat_guard,
+        async for event in stream_group(task, [baseline, "moat"], guard=moat_guard,
                                         client=client, policy=policy, group_id=group_id):
             # Same one-event-per-line format as the fixtures, so replay reads it unchanged.
             recording.write(event.model_dump_json(by_alias=True) + "\n")
@@ -136,9 +137,12 @@ async def live_stream(task: str):
 
 
 @app.get("/api/live/stream")
-def live(task: str = "demo"):
+def live(task: str = "demo", baseline: Literal["none", "prompt"] = "none"):
+    # baseline = the left lane's condition: "none" (No guard) or "prompt" (Prompt only: the
+    # agent is told not to disclose secrets, but nothing checks its queries). Anything else
+    # is rejected by FastAPI with a 422 before a run starts.
     return StreamingResponse(
-        live_stream(task),
+        live_stream(task, baseline),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache"},
     )
