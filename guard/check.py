@@ -193,15 +193,18 @@ async def check(draft: str, history: list[SentQuery] | list[dict], policy: Polic
 
     t = time.perf_counter()
     dims = [s.dim for s in policy.secrets if s.secret_id in res.secrets_touched]
+    err = None
     try:
         new = await tier2.rewrite(draft, res.reasons, dims or [s.dim for s in policy.secrets])
-    except Exception:  # a failed rewrite keeps the block (fail closed)
-        new = ""
+    except Exception as e:  # a failed rewrite keeps the block (fail closed)
+        new, err = "", type(e).__name__
     re_res = _tiers01(new, sent, policy) if new and new != draft else None
     ms = round((time.perf_counter() - t) * 1000, 3)
     latency = {**res.latency_ms, "tier2": ms, "total": round(res.latency_ms["total"] + ms, 3)}
     if re_res is None or re_res.action != "pass":
-        return res.model_copy(update={"latency_ms": latency})
+        why = (f"tier 2: model call failed ({err}); block kept" if err else
+               "tier 2: no rewrite passed tiers 0-1; block kept")
+        return res.model_copy(update={"latency_ms": latency, "reasons": [*res.reasons, why]})
     return GuardResult(
         action="rewrite", query=new, tier=2, rechecked=True,
         leak_types=res.leak_types, secrets_touched=res.secrets_touched,

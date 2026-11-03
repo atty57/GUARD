@@ -101,13 +101,14 @@ def _main() -> int:
     import asyncio
     from pathlib import Path
 
+    import guard.tier2 as tier2   # under -m this file runs as __main__; check() reads guard.tier2
     from agent.llm import LLMClient
     from guard.check import check
     from guard.policy import load_policy
 
     policy = load_policy(Path(__file__).resolve().parent.parent / "data" / "policy.example.yaml")
     client = LLMClient(mode="live", max_usd=0.50)
-    configure(client)
+    tier2.configure(client)
     drafts = [
         "pouch cell 272 Wh/kg high-nickel cathode calcination patents",
         "NCM 88/06/06 cathode calcination 745 °C prior art",
@@ -117,7 +118,7 @@ def _main() -> int:
     async def run():
         for d in drafts:
             r = await check(d, [], policy)
-            print(f"--- {d}\n  {r.action} (tier {r.tier}) -> {r.query!r}")
+            print(f"--- {d}\n  {r.action} (tier {r.tier}) -> {r.query!r}\n  {r.reasons[-1]}")
     asyncio.run(run())
     print(f"spent ${client.cost_usd:.4f}")
     return 0

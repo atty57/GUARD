@@ -67,6 +67,7 @@ def test_rewrite_that_still_leaks_is_blocked(policy, client):
     client(('{"query": "pouch cell 0.272 kWh/kg patents"}', "stop"))   # same value, other unit
     r = run(LEAKY, policy)
     assert r.action == "block" and r.tier == 0 and "tier2" in r.latency_ms
+    assert r.reasons[-1] == "tier 2: no rewrite passed tiers 0-1; block kept"
 
 
 def test_rewrite_checked_against_history(policy, client):
@@ -87,6 +88,7 @@ def test_model_error_keeps_the_block(policy, client):
     client(raises=RuntimeError("api down"))
     r = run(LEAKY, policy)
     assert r.action == "block" and "tier2" in r.latency_ms
+    assert r.reasons[-1] == "tier 2: model call failed (RuntimeError); block kept"
 
 
 def test_truncated_reply_retried_once_at_double(policy, client):
