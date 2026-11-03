@@ -4,7 +4,8 @@ import type { ConditionResult, Estimate } from '@/evalTypes'
 import { CONDITIONS } from '@/evalTypes'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
-// 0.31 -> "31%". Every number in this table is a share or rate in [0, 1].
+// 0.31 -> "31%", -0.03 -> "-3%". Most numbers here are shares in [0, 1]; the leak score
+// (numeric_gain) is a difference and can be negative, so the sign is kept.
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
 function Cell({ e }: { e: Estimate }) {

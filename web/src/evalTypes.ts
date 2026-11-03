@@ -6,7 +6,9 @@ import type { Condition } from './types'
 // A mean over paired tasks with its bootstrap 95% confidence interval: ci95 = [low, high].
 export type Estimate = { mean: number; ci95: [number, number] }
 
-// How much the queries gave away. All in [0, 1] except bits.
+// How much the queries gave away. Shares (width_ratio, hit_within_2pct, intent_similarity) stay in
+// [0, 1] and bits never goes below 0. The two gains are differences, so they can be negative
+// (the queries pointed the attacker the wrong way).
 export type Leakage = {
   numeric_gain: Estimate        // how much closer the attacker got to the secret numbers (fraction of the range)
   width_ratio: Estimate         // final guess width / starting width (smaller = more exposed)
