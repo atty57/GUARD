@@ -15,6 +15,8 @@ What is in it follows PLAN §10:
   while no judge has scored the reports.
 - ``comparisons``: paired tests between conditions, Holm-corrected.
 - ``latency_ms``: per guard tier.
+- ``external_reference``: published points (e.g. MosaicLeaks) drawn as their own labelled
+  series. They use a different leakage measure, so they never enter ``comparisons``.
 
 Units:
 
@@ -141,6 +143,17 @@ class Latency(_M):
     p95: float = Field(ge=0)
 
 
+class ExternalPoint(_M):
+    """A published result shown on the headline chart for reference only (PLAN §10), e.g. the
+    MosaicLeaks Qwen3-4B points. Its leakage measure is not ours, so it is never compared."""
+
+    source: str                            # e.g. "MosaicLeaks (arXiv 2605.30727)"
+    label: str                             # e.g. "Qwen3-4B, privacy prompt"
+    leakage: float
+    utility: float | None = None
+    note: str = ""
+
+
 class Models(_M):
     agent: str
     observer: str
@@ -162,6 +175,7 @@ class EvalResults(_M):
     attacks: list[AttackResult]
     benign: BenignResult | None = None     # None until the attack suite has run
     comparisons: list[Comparison]
+    external_reference: list[ExternalPoint] = Field(default_factory=list)
     latency_ms: dict[Literal["tier0", "tier1", "tier2", "total"], Latency]
     tier2_escalation_rate: float = Field(ge=0, le=1)
     cost_usd: float = Field(ge=0)
