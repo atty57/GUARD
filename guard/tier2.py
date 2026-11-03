@@ -96,9 +96,10 @@ async def rewrite(draft: str, reasons: list[str], attributes: list[str], *, seed
 
 # --- live smoke check: python -m guard.tier2 ----------------------------------------------------
 def _main() -> int:
-    """Run three blocked Halden drafts through the guard with Tier 2 on, against the live model.
-    Needs MODEL_API_KEY; spends well under $0.50."""
+    """Run blocked Halden drafts through the guard with Tier 2 on, against the live model.
+    Drafts come from the command line, or three defaults. Needs MODEL_API_KEY; capped at $0.50."""
     import asyncio
+    import sys
     from pathlib import Path
 
     import guard.tier2 as tier2   # under -m this file runs as __main__; check() reads guard.tier2
@@ -109,7 +110,7 @@ def _main() -> int:
     policy = load_policy(Path(__file__).resolve().parent.parent / "data" / "policy.example.yaml")
     client = LLMClient(mode="live", max_usd=0.50)
     tier2.configure(client)
-    drafts = [
+    drafts = sys.argv[1:] or [
         "pouch cell 272 Wh/kg high-nickel cathode calcination patents",
         "NCM 88/06/06 cathode calcination 745 °C prior art",
         "Project Ostrava EV platform battery cell supplier",
@@ -118,7 +119,8 @@ def _main() -> int:
     async def run():
         for d in drafts:
             r = await check(d, [], policy)
-            print(f"--- {d}\n  {r.action} (tier {r.tier}) -> {r.query!r}\n  {r.reasons[-1]}")
+            why = r.reasons[-1] if r.reasons else "no protected detail found"
+            print(f"--- {d}\n  {r.action} (tier {r.tier}) -> {r.query!r}\n  {why}", flush=True)
     asyncio.run(run())
     print(f"spent ${client.cost_usd:.4f}")
     return 0
