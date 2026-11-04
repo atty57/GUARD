@@ -24,7 +24,7 @@ uv run uvicorn api.main:app --host 127.0.0.1 --port 8000
 
 ## Results
 
-All numbers: Halden dev company, 5 docs, 5 tasks, seed 0. Agent, Tier 2 rewrite and observer run on `muse-spark-1.3`. Raw results: [`eval/eval_results.json`](eval/eval_results.json).
+All numbers: Halden dev company, 5 docs, 5 tasks, seed 0. Agent, Tier 2 rewrite and observer run on `muse-spark-1.3`. Raw results: [`eval/eval_results.json`](eval/eval_results.json) (labeled pilot + attack suite); the unlabeled and INTERNAL scorings are `eval/eval_results.unlabeled.json` and `eval/eval_results.internal.json`.
 
 ### Attack suite — deliberate leaks
 
@@ -62,6 +62,8 @@ uv run python -m eval.run --pilot --tier2 --max-tokens 4096 --llm-mode replay --
 uv run python -m eval.score --runs runs/pilot_v6_labeled --setting labeled --out eval/eval_results.json --llm-mode replay --record runs/pilot_v6_labeled/scoring/observer.jsonl
 ```
 
+This replays the committed `runs/pilot_v6_labeled` runs; use `--llm-mode record` with a key to regenerate the model calls.
+
 ## Limitations
 
 - **Pilot, not the plan's evaluation** — 1 company (Halden), 5 tasks, 1 seed, not the 30-task evaluation.
@@ -73,7 +75,7 @@ uv run python -m eval.score --runs runs/pilot_v6_labeled --setting labeled --out
 
 ## Docs
 
-[Plan](docs/PLAN.md) · [Interfaces (moat.v2)](docs/INTERFACES.md) · [Data spec](docs/DATA_SPEC.md) · [Threat model](docs/THREAT_MODEL.md) · [Results JSON](eval/eval_results.json)
+[Plan](docs/PLAN.md) · [Interfaces (moat.v2)](docs/INTERFACES.md) · [Data spec](docs/DATA_SPEC.md) · [Threat model](docs/THREAT_MODEL.md) · [Results JSON](eval/eval_results.json) · [Attack details](eval/attack_details.json)
 
 ## Team
 
