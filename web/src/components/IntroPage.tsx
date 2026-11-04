@@ -1,6 +1,6 @@
 // The intro screen ("01"): what MOAT is, in one picture.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import castle from '@/assets/castle.png'
 import guard from '@/assets/guard.png'
 import messenger from '@/assets/messenger.png'
@@ -31,25 +31,35 @@ const TRIPS = [
   { outcome: 'rewrite', delay: 3, path: 'moat-out', bubble: '✎ rewritten', color: 'bg-amber-200 border-amber-700 text-amber-900' },
   { outcome: 'block', delay: 6, path: 'moat-back', bubble: '✕ blocked', color: 'bg-red-200 border-red-700 text-red-900' },
 ] as const
+type Outcome = (typeof TRIPS)[number]['outcome']
 
 // One messenger's trip: the outer box moves along the bridge, the inner one flips to face the
 // castle on a block, the sprite itself flips between its two walk frames.
-// The rewrite moment: a little note above the messenger where the secret part gets crossed out
-// and replaced, a tiny version of the word diff on the Compare screen. Runs on the same timing
-// as its messenger's trip, so it shows exactly while they wait at the guard.
-function RewriteNote({ timing }: { timing: string }) {
+// The note each messenger carries: it pops up while they wait at the guard, so you can see what
+// the guard is reading. Same words as the Compare screen's example run where possible.
+//   pass:    a harmless search, nothing changes
+//   rewrite: the secret part is crossed out and replaced (a tiny version of the word diff)
+//   block:   the secret part is highlighted, and the search never leaves
+const NOTE_BOX = 'absolute -top-24 hidden sm:block left-1/2 whitespace-nowrap rounded-md border-2 border-foreground/80 bg-[#fffdf8] px-2 py-1 font-mono text-xs shadow-[2px_2px_0_0] shadow-foreground/70'
+
+function Note({ outcome, timing }: { outcome: Outcome; timing: string }) {
   return (
-    <span
-      className="absolute -top-24 left-1/2 whitespace-nowrap rounded-md border-2 border-foreground/80 bg-[#fffdf8] px-2 py-1 font-mono text-xs shadow-[2px_2px_0_0] shadow-foreground/70"
-      style={{ animation: `moat-note ${timing}`, opacity: 0 }}
-    >
-      energy density{' '}
-      <span className="relative text-red-700">
-        above 360 Wh/kg
-        {/* the strike line grows from left to right */}
-        <span className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-red-700" style={{ animation: `moat-strike ${timing}` }} />
-      </span>{' '}
-      <span className="font-semibold text-emerald-700" style={{ animation: `moat-fix ${timing}`, opacity: 0 }}>characteristics</span>
+    <span className={NOTE_BOX} style={{ animation: `moat-note ${timing}`, opacity: 0 }}>
+      {outcome === 'pass' && <>NCM811 cathode thermal stability</>}
+      {outcome === 'rewrite' && (
+        <>
+          energy density{' '}
+          <span className="relative text-red-700">
+            above 360 Wh/kg
+            {/* the strike line grows from left to right */}
+            <span className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-red-700" style={{ animation: `moat-strike ${timing}` }} />
+          </span>{' '}
+          <span className="font-semibold text-emerald-700" style={{ animation: `moat-fix ${timing}`, opacity: 0 }}>characteristics</span>
+        </>
+      )}
+      {outcome === 'block' && (
+        <>our <span className="rounded-sm bg-red-200 px-0.5 font-semibold text-red-800">2027 solid-state launch date</span></>
+      )}
     </span>
   )
 }
@@ -58,9 +68,9 @@ function Trip({ outcome, delay, path, bubble, color }: (typeof TRIPS)[number]) {
   const timing = `10.5s linear ${delay}s infinite both`   // same length as the whole loop
   return (
     <div className="absolute bottom-[34%] h-[28%] aspect-square" style={{ animation: `${path} ${timing}`, opacity: 0 }}>
-      {outcome === 'rewrite' && <RewriteNote timing={timing} />}
+      <Note outcome={outcome} timing={timing} />
       <span
-        className={`absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border-2 px-2 py-1 font-mono text-sm font-bold shadow-[2px_2px_0_0] shadow-foreground/70 ${color}`}
+        className={`absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border-2 px-1 py-0.5 font-mono text-[10px] font-bold sm:-top-10 sm:px-2 sm:py-1 sm:text-sm shadow-[2px_2px_0_0] shadow-foreground/70 ${color}`}
         style={{ animation: `moat-bubble ${timing}`, opacity: 0 }}
       >
         {bubble}
@@ -75,6 +85,13 @@ function Trip({ outcome, delay, path, bubble, color }: (typeof TRIPS)[number]) {
       </div>
     </div>
   )
+}
+
+// The line under the scene that explains each trip while it happens (moat-caption in index.css).
+const CAPTIONS: Record<Outcome, ReactNode> = {
+  pass: <><b className="text-emerald-800">Pass.</b> A harmless search: nothing private in it, so it goes out to the web.</>,
+  rewrite: <><b className="text-amber-800">Rewrite.</b> This search reveals an internal number. MOAT removes it and sends a safer version.</>,
+  block: <><b className="text-red-800">Block.</b> This one gives away a secret. MOAT stops it, and it never leaves the company.</>,
 }
 
 const OUTCOMES = [
@@ -102,9 +119,10 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
         text="Your AI research agent reads company documents and searches the web. One query looks innocent; many together can give the company's secrets away. MOAT checks every search before it leaves."
       />
 
+      {/* The scene and its caption share one wrapper (ref), so they restart together and stay in sync. */}
+      <div ref={scene} className="flex flex-col gap-3">
       {/* The scene. Positions are in % of the box, so it scales with the screen width. */}
       <div
-        ref={scene}
         role="img"
         aria-label="A castle with a moat. Messengers carry search queries out across the drawbridge, where a guard checks each one."
         className="relative aspect-[16/7] w-full overflow-hidden rounded-xl border-2 border-foreground/80 bg-sky-100 shadow-[6px_6px_0_0] shadow-foreground/80"
@@ -133,12 +151,24 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
           {TRIPS.map((t) => <Trip key={t.outcome} {...t} />)}
         </div>
 
-        <p className="absolute left-3 top-3 rounded border border-foreground/60 bg-card px-2 py-1 font-mono text-xs uppercase tracking-widest">
-          The web ←
+        <p className="absolute left-3 top-3 rounded border border-foreground/60 bg-card px-2 py-1 font-mono text-[10px] uppercase tracking-widest sm:text-xs">
+          ← Public web
         </p>
-        <p className="absolute right-3 top-3 rounded border border-foreground/60 bg-card px-2 py-1 font-mono text-xs uppercase tracking-widest">
-          Company secrets
+        <p className="absolute right-3 top-3 rounded border border-foreground/60 bg-card px-2 py-1 font-mono text-[10px] uppercase tracking-widest sm:text-xs">
+          Your company<span className="hidden sm:inline"> · private docs</span>
         </p>
+      </div>
+
+      {/* One caption per trip, stacked in the same spot; each fades in while its messenger is out.
+          Taller on small screens where the sentence wraps. Hidden when animations are off. */}
+      <div className="relative h-12 motion-reduce:hidden sm:h-6" aria-hidden>
+        {TRIPS.map((t) => (
+          <p key={t.outcome} className="absolute inset-0 text-center text-sm"
+             style={{ animation: `moat-caption 10.5s linear ${t.delay}s infinite both`, opacity: 0 }}>
+            {CAPTIONS[t.outcome]}
+          </p>
+        ))}
+      </div>
       </div>
 
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-3">
