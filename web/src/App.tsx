@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { HopCard } from '@/components/HopCard'
+import { Markdown } from '@/components/Markdown'
 import { LeakMeter, laneVerdict, type SecretLimit } from '@/components/LeakMeter'
 import castle from '@/assets/castle.png'
 import { SectionHeading } from '@/components/SectionHeading'
@@ -148,8 +149,6 @@ function App() {
 
   // Recomputed only when events change.
   const lanes = useMemo(() => buildLanes(events), [events])
-  const priors = useMemo(() => priorsByDim([lanes.baseline, lanes.moat]), [lanes])
-
   // Policy limits depend on the run's strictness (tau), so fetch them once we know it.
   const tau = lanes.moat.started?.tau ?? lanes.baseline.started?.tau
   const [limits, setLimits] = useState<Record<string, SecretLimit>>({})
@@ -160,6 +159,12 @@ function App() {
       .then((data: { secrets: Record<string, SecretLimit> }) => setLimits(data.secrets))
       .catch(() => setLimits({})) // the meter falls back to a fixed cutoff
   }, [tau])
+
+  // Each secret's normal range (prior) comes only from the guard's interval events. Recordings
+  // without them (golden runs carry just the observer's final guesses) show those guesses as plain
+  // text with no verdict: on Halden the observer lands close to the values even with no queries,
+  // so judging its absolute guess against the policy would call every lane "Exposed".
+  const priors = useMemo(() => priorsByDim([lanes.baseline, lanes.moat]), [lanes])
 
   // What the rows need to know: has anything started, does either lane have a profile,
   // and which hop numbers appear in either lane.
@@ -585,7 +590,7 @@ function ReportSlot({ lane }: { lane: LaneView }) {
   return (
     <Card size="sm">
       <CardHeader><CardTitle>Final report</CardTitle></CardHeader>
-      <CardContent>{lane.report}</CardContent>
+      <CardContent><Markdown text={lane.report} /></CardContent>
     </Card>
   )
 }
