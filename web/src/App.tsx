@@ -8,6 +8,7 @@ import { HopCard } from '@/components/HopCard'
 import { LeakMeter, laneVerdict, type SecretLimit } from '@/components/LeakMeter'
 import castle from '@/assets/castle.png'
 import { SectionHeading } from '@/components/SectionHeading'
+import { IntroPage } from '@/components/IntroPage'
 import { ProductProfile } from '@/components/ProductProfile'
 import { RunSummary } from '@/components/RunSummary'
 import { EvalDashboard } from '@/components/EvalDashboard'
@@ -15,8 +16,10 @@ import { EvalDashboard } from '@/components/EvalDashboard'
 // Two screens: Compare (one run, side by side) and Results (the experiment numbers).
 // The screen lives in the address (#results), so the back button works and a link can open
 // the dashboard directly. Anything other than #results is the Compare screen.
-type Screen = 'compare' | 'results'
-const screenFromHash = (): Screen => (window.location.hash === '#results' ? 'results' : 'compare')
+// Three screens: Intro (the default), Compare (#compare) and Results (#results).
+type Screen = 'intro' | 'compare' | 'results'
+const screenFromHash = (): Screen =>
+  window.location.hash === '#results' ? 'results' : window.location.hash === '#compare' ? 'compare' : 'intro'
 
 function useScreen(): Screen {
   const [screen, setScreen] = useState<Screen>(screenFromHash)
@@ -78,9 +81,19 @@ function App() {
 
   useEffect(() => () => sourceRef.current?.close(), [])
 
-  function startReplay() {
-    setPlaying(runs.find((r) => r.name === selected) ?? null)
-    startStream(`/api/replay/${encodeURIComponent(selected)}/stream`)
+  function startReplay(name: string = selected) {
+    setPlaying(runs.find((r) => r.name === name) ?? null)
+    startStream(`/api/replay/${encodeURIComponent(name)}/stream`)
+  }
+
+  // Intro's "Watch it work": open Compare and play the best run there is. A golden recording
+  // (the prepared demo runs) if one exists, otherwise the compare fixture.
+  function watchDemo() {
+    const name = runs.find((r) => r.name.startsWith('golden_'))?.name ?? 'compare_run'
+    setMode('replay')
+    setSelected(name)
+    window.location.hash = '#compare'
+    startReplay(name)
   }
 
   function startLive() {
@@ -193,7 +206,10 @@ function App() {
         <div className="flex flex-wrap items-center gap-6">
           <div className="flex items-center gap-3">
             {/* Seb's castle sprite. "pixelated" keeps the 32×32 pixel art crisp when scaled up. */}
-            <img src={castle} alt="" width={40} height={40} style={{ imageRendering: 'pixelated' }} />
+            {/* The logo goes back to the intro. */}
+            <a href="#intro" aria-label="MOAT intro">
+              <img src={castle} alt="" width={40} height={40} style={{ imageRendering: 'pixelated' }} />
+            </a>
             <div>
               <h1 className="text-xl font-bold tracking-tight">MOAT</h1>
               <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">AI search security</p>
@@ -246,7 +262,7 @@ function App() {
                   ? runs.map((r) => <option key={r.name} value={r.name}>{runLabels[r.name]}</option>)
                   : <option value={selected}>{selected.replace(/_/g, ' ')}</option>}
               </select>
-              <Button onClick={startReplay} disabled={running}>
+              <Button onClick={() => startReplay()} disabled={running}>
                 {running ? 'Replaying…' : 'Replay'}
               </Button>
             </>
@@ -260,7 +276,7 @@ function App() {
       </header>
 
       {/* The Compare screen's state (the run on screen) is kept while you look at Results. */}
-      {screen === 'results' ? <EvalDashboard /> : (
+      {screen === 'intro' ? <IntroPage onWatch={watchDemo} /> : screen === 'results' ? <EvalDashboard /> : (
       <main className="flex flex-col gap-6 p-8">
         <SectionHeading
           eyebrow="02 / The checkpoint"
