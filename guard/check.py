@@ -20,7 +20,9 @@ Tier 1 looks at the whole session (``history`` = queries that actually left):
 - the profile check (guard/profile.py) blocks a draft that would leave fewer than ``k_min``
   candidate products fitting what has been revealed about ours (``intent_profile``).
 
-Tier 2 (LLM rewrite) comes later; until then a hit is a block, normally ``redraftable``.
+Tier 2 (guard/tier2.py) runs only when a model client is configured and Tiers 0-1 block a draft
+as ``redraftable``: a model rewrites the draft without the flagged detail, and the rewrite goes
+out only if Tiers 0-1 pass it too (``rechecked``). Otherwise the block stands.
 
 Reasons name the secret id and the kind of leak, never the matched text or the value: they are
 shown in the UI and written to run logs.
@@ -34,7 +36,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from guard import ledger, profile
+from guard import ledger, profile, tier2
 from guard.policy import Policy, SecretSpec
 from guard.quantities import Quantity, extract_quantities, family, to_canonical, unit_id
 
@@ -200,6 +202,34 @@ async def check(draft: str, history: list[SentQuery] | list[dict], policy: Polic
     """Decide whether ``draft`` may leave. Raises on bad input; the caller treats any
     exception as a block (fail closed)."""
     sent = _sent(history)
+    res = _tiers01(draft, sent, policy)
+    if res.action != "block" or res.block_kind != "redraftable" or not tier2.enabled():
+        return res
+
+    t = time.perf_counter()
+    dims = [s.dim for s in policy.secrets if s.secret_id in res.secrets_touched]
+    err = None
+    try:
+        new = await tier2.rewrite(draft, res.reasons, dims or [s.dim for s in policy.secrets])
+    except Exception as e:  # a failed rewrite keeps the block (fail closed)
+        new, err = "", type(e).__name__
+    re_res = _tiers01(new, sent, policy) if new and new != draft else None
+    ms = round((time.perf_counter() - t) * 1000, 3)
+    latency = {**res.latency_ms, "tier2": ms, "total": round(res.latency_ms["total"] + ms, 3)}
+    if re_res is None or re_res.action != "pass":
+        why = (f"tier 2: model call failed ({err}); block kept" if err else
+               "tier 2: no rewrite passed tiers 0-1; block kept")
+        return res.model_copy(update={"latency_ms": latency, "reasons": [*res.reasons, why]})
+    return GuardResult(
+        action="rewrite", query=new, tier=2, rechecked=True,
+        leak_types=res.leak_types, secrets_touched=res.secrets_touched,
+        reasons=[*res.reasons, "tier 2: rewritten without the flagged detail; "
+                 "the rewrite passed tiers 0-1"],
+        latency_ms=latency, intervals=re_res.intervals, profile=re_res.profile)
+
+
+def _tiers01(draft: str, sent: list[str], policy: Policy) -> GuardResult:
+    """Tiers 0 and 1 on one draft against what has been sent."""
     t0 = time.perf_counter()
     leak_types, touched, reasons = tier0(draft, policy)
     t1 = time.perf_counter()
