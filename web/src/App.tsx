@@ -5,7 +5,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { HopCard } from '@/components/HopCard'
-import { LeakMeter, type SecretLimit } from '@/components/LeakMeter'
+import { LeakMeter, laneVerdict, type SecretLimit } from '@/components/LeakMeter'
+import castle from '@/assets/castle.png'
+import { SectionHeading } from '@/components/SectionHeading'
 import { ProductProfile } from '@/components/ProductProfile'
 import { RunSummary } from '@/components/RunSummary'
 import { EvalDashboard } from '@/components/EvalDashboard'
@@ -189,11 +191,13 @@ function App() {
           squeezing the title. */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b px-8 py-4">
         <div className="flex flex-wrap items-center gap-6">
-          <div>
-            <h1 className="text-xl font-semibold">MOAT Guard</h1>
-            <p className="text-sm text-muted-foreground">
-              What a research agent's searches reveal, with and without the guard
-            </p>
+          <div className="flex items-center gap-3">
+            {/* Seb's castle sprite. "pixelated" keeps the 32×32 pixel art crisp when scaled up. */}
+            <img src={castle} alt="" width={40} height={40} style={{ imageRendering: 'pixelated' }} />
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">MOAT</h1>
+              <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">AI search security</p>
+            </div>
           </div>
           {/* Screen tabs. Plain links: clicking one changes the #hash, and useScreen follows it. */}
           <nav aria-label="Screens" className="flex rounded-lg border p-0.5 text-sm">
@@ -258,6 +262,11 @@ function App() {
       {/* The Compare screen's state (the run on screen) is kept while you look at Results. */}
       {screen === 'results' ? <EvalDashboard /> : (
       <main className="flex flex-col gap-6 p-8">
+        <SectionHeading
+          eyebrow="02 / The checkpoint"
+          title="One agent. Two outcomes."
+          text="The same research task, with and without a guard protecting company secrets."
+        />
         <SourceBanner
           playing={playing}
           liveStatus={liveStatus}
@@ -278,12 +287,14 @@ function App() {
               title={LANE_TITLE[lanes.baseline.started?.condition ?? baselineChoice]}
               lane={lanes.baseline}
               waiting={running}
+              verdict={laneVerdict(lanes.baseline, priors, limits)}
               choice={showBaselineChoice
                 ? { value: baselineChoice, onChange: chooseBaseline, disabled: running }
                 : undefined}
             />
           }
-          right={<LaneHeading title={LANE_TITLE[lanes.moat.started?.condition ?? 'moat']} lane={lanes.moat} waiting={running} />}
+          right={<LaneHeading title={LANE_TITLE[lanes.moat.started?.condition ?? 'moat']} lane={lanes.moat} waiting={running}
+                              verdict={laneVerdict(lanes.moat, priors, limits)} />}
         />
 
         {started && (
@@ -452,10 +463,12 @@ const NODE_LABEL: Record<string, string> = {
   generate_report: 'Writing the report',
 }
 
-function LaneHeading({ title, lane, waiting, choice }: {
+function LaneHeading({ title, lane, waiting, choice, verdict }: {
   title: string
   lane: LaneView
   waiting: boolean
+  // The lane's worst secret as one word ("Exposed"), from the leak meter's own rules.
+  verdict: { label: string; badge: string } | null
   // When set, the title is a dropdown to swap the left lane between No guard and Prompt only.
   choice?: { value: Baseline; onChange: (next: Baseline) => void; disabled: boolean }
 }) {
@@ -479,7 +492,10 @@ function LaneHeading({ title, lane, waiting, choice }: {
         ) : (
           <h2 className="text-lg font-semibold">{title}</h2>
         )}
-        {lane.started && <Badge variant="outline">condition: {lane.started.condition}</Badge>}
+        <div className="flex items-center gap-2">
+          {lane.started && <span className="font-mono text-xs text-muted-foreground">{lane.started.condition}</span>}
+          {verdict && <Badge className={`font-mono uppercase tracking-wide ${verdict.badge}`}>{verdict.label}</Badge>}
+        </div>
       </div>
       <LaneStatus lane={lane} waiting={waiting} />
     </div>

@@ -42,9 +42,10 @@ function policyBreaches(guess: Range, limit: SecretLimit): string[] {
   return out
 }
 
-const EXPOSED = { label: 'Exposed', bar: 'bg-red-500', badge: 'bg-red-500/15 text-red-700' }
-const NARROWED = { label: 'Narrowed', bar: 'bg-amber-500', badge: 'bg-amber-500/15 text-amber-700' }
-const PROTECTED = { label: 'Protected', bar: 'bg-emerald-500', badge: 'bg-emerald-500/15 text-emerald-700' }
+// rank: how bad it is, so a lane can show its worst secret (see laneVerdict).
+const EXPOSED = { label: 'Exposed', rank: 2, bar: 'bg-red-500', text: 'text-red-700', badge: 'bg-red-500/15 text-red-700' }
+const NARROWED = { label: 'Narrowed', rank: 1, bar: 'bg-amber-500', text: 'text-amber-700', badge: 'bg-amber-500/15 text-amber-700' }
+const PROTECTED = { label: 'Protected', rank: 0, bar: 'bg-emerald-500', text: 'text-emerald-700', badge: 'bg-emerald-500/15 text-emerald-700' }
 
 // Exposed = breaks this secret's policy. Narrowed = within policy but under half the prior range.
 // Without policy limits for this secret, fall back to a fixed share of the prior range.
@@ -63,18 +64,35 @@ const pretty = (dim: string) => dim.replace(/_/g, ' ')
 // "372–372" reads oddly; a one-point range is just "372".
 const span = (r: Range) => (r[0] === r[1] ? `${r[0]}` : `${r[0]}–${r[1]}`)
 
+// The attacker's guess per secret: the latest observer estimate, else the latest committed interval.
+function laneGuesses(lane: LaneView): Map<string, Range> {
+  const guesses = new Map<string, Range>()
+  for (const i of lane.hops.flatMap((h) => h.intervals)) if (i.committed) guesses.set(i.dim, i.after)
+  for (const o of lane.observer) guesses.set(o.attr, [o.p10, o.p90])
+  return guesses
+}
+
+// One word for a whole lane, shown next to its title: its worst secret ("Exposed" if any secret
+// breaks the policy). null while nothing is known yet. Same rules as the meter below, so the
+// badge and the meter can never disagree.
+export function laneVerdict(lane: LaneView, priors: Record<string, PriorInfo>, limits: Record<string, SecretLimit>) {
+  let worst: typeof EXPOSED | typeof NARROWED | typeof PROTECTED | null = null
+  for (const [dim, guess] of laneGuesses(lane)) {
+    const info = priors[dim]
+    if (!info) continue
+    const lv = level(guess, info.prior, limits[dim])
+    if (!worst || lv.rank > worst.rank) worst = lv
+  }
+  return worst && { label: worst.label, badge: worst.badge }
+}
+
 export function LeakMeter({ lane, priors, limits }: {
   lane: LaneView
   priors: Record<string, PriorInfo>
   limits: Record<string, SecretLimit>
 }) {
-  const intervals = lane.hops.flatMap((h) => h.intervals)
-  const prevented = intervals.filter((i) => i.status === 'prevented')
-
-  // The attacker's guess per secret: the latest observer estimate, else the latest committed interval.
-  const guesses = new Map<string, Range>()
-  for (const i of intervals) if (i.committed) guesses.set(i.dim, i.after)
-  for (const o of lane.observer) guesses.set(o.attr, [o.p10, o.p90])
+  const prevented = lane.hops.flatMap((h) => h.intervals).filter((i) => i.status === 'prevented')
+  const guesses = laneGuesses(lane)
 
   return (
     <Card>
@@ -98,9 +116,14 @@ export function LeakMeter({ lane, priors, limits }: {
           return (
             <div key={dim} className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium capitalize">{pretty(dim)}</span>
+                <span className="text-sm font-medium first-letter:uppercase">{pretty(dim)}</span>
                 <Badge className={lv.badge}>{lv.label}</Badge>
               </div>
+
+              {/* The hero number: the attacker's guess, big and colored by how bad it is. */}
+              <p className={`text-4xl font-bold tracking-tight tabular-nums ${lv.text}`}>
+                {span(guess)} <span className="text-base font-normal text-muted-foreground">{unit}</span>
+              </p>
 
               <div className="relative h-4 rounded-full bg-muted" role="img"
                    aria-label={`Attacker's guess ${guess[0]} to ${guess[1]} ${unit}, out of ${prior[0]} to ${prior[1]}`}>
@@ -115,16 +138,16 @@ export function LeakMeter({ lane, priors, limits }: {
 
               <div className="flex justify-between font-mono text-xs text-muted-foreground tabular-nums">
                 <span>{prior[0]}</span>
-                <span className="text-foreground">guess: {span(guess)} {unit}</span>
-                <span>{prior[1]}</span>
+                <span>{prior[1]} {unit}</span>
               </div>
 
               {lv.breaches.map((b) => (
                 <p key={b} className="text-xs text-red-700">{b}</p>
               ))}
 
+              {/* Good news, so green: MOAT kept the guess from getting this narrow. */}
               {stopped.map((p, i) => (
-                <p key={i} className="text-xs text-red-700">
+                <p key={i} className="text-xs text-emerald-700">
                   MOAT prevented this from narrowing to {span(p.after)} {unit}
                 </p>
               ))}

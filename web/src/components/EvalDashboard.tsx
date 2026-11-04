@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { EvalResults } from '@/evalTypes'
 import { Badge } from '@/components/ui/badge'
+import { SectionHeading } from '@/components/SectionHeading'
 import { ConditionsTable } from '@/components/ConditionsTable'
 import { HeadlineChart } from '@/components/HeadlineChart'
 import { AttacksCard } from '@/components/AttacksCard'
@@ -53,8 +54,9 @@ export function EvalDashboard() {
       )}
 
       <div>
-        <h2 className="text-lg font-semibold">Experiment results</h2>
-        <p className="text-sm text-muted-foreground">
+        <SectionHeading eyebrow="03 / The evidence" title="Protection, measured."
+                        text="Leakage, report quality, attack resistance and guard overhead, across many runs." />
+        <p className="mt-2 text-sm text-muted-foreground">
           {r.n_tasks} tasks × {r.conditions.length} conditions · {r.n_seeds} seed{r.n_seeds === 1 ? '' : 's'} ·{' '}
           {r.split} split · agent {r.models.agent}
         </p>
