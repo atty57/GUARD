@@ -1,7 +1,7 @@
 // The Results screen (S5): the experiment results from GET /api/eval.
 // It only reads precomputed numbers; it never starts a run.
 import { useEffect, useState } from 'react'
-import type { EvalResults } from '@/evalTypes'
+import type { EvalResults, ExternalPoint, Quality } from '@/evalTypes'
 import { Badge } from '@/components/ui/badge'
 import { SectionHeading } from '@/components/SectionHeading'
 import { ConditionsTable } from '@/components/ConditionsTable'
@@ -59,13 +59,54 @@ export function EvalDashboard() {
         <p className="mt-2 text-sm text-muted-foreground">
           {r.n_tasks} tasks × {r.conditions.length} conditions · {r.n_seeds} seed{r.n_seeds === 1 ? '' : 's'} ·{' '}
           {r.split} split · agent {r.models.agent}
+          {r.setting && <> · {r.setting === 'labeled' ? 'docs labeled CONFIDENTIAL' : 'docs without the CONFIDENTIAL label'}</>}
         </p>
+        {r.quality && <QualityNote q={r.quality} />}
       </div>
 
       <HeadlineChart conditions={r.conditions} sweep={r.tau_sweep} />
+      {(r.external_reference ?? []).length > 0 && <ExternalReference points={r.external_reference!} />}
       <ConditionsTable conditions={r.conditions} />
       <AttacksCard attacks={r.attacks} benign={r.benign} />
       <StatsCards r={r} />
     </main>
+  )
+}
+
+// One line on how much of the input made it into the numbers. Amber when something was left out,
+// so a reader knows the numbers rest on fewer runs than planned.
+function QualityNote({ q }: { q: Quality }) {
+  const problems = q.runs_excluded + q.observer_failures + q.judge_failures
+  return (
+    <p className={`mt-1 text-xs ${problems ? 'text-amber-700' : 'text-muted-foreground'}`}>
+      {q.runs_scored} runs scored
+      {q.runs_excluded > 0 && ` · ${q.runs_excluded} left out (incomplete observer reply)`}
+      {q.judge_failures > 0 && ` · ${q.judge_failures} report scores missing`}
+    </p>
+  )
+}
+
+// Published results for context. Kept apart from our chart on purpose: they measure leakage a
+// different way, so putting them on the same axes would invite a comparison that isn't fair.
+// Published numbers keep their decimal (25.5%, not 26%): quote them exactly as the paper does.
+const exact = (x: number) => `${+(x * 100).toFixed(1)}%`
+
+function ExternalReference({ points }: { points: ExternalPoint[] }) {
+  return (
+    <section className="rounded-lg border px-4 py-3 text-sm">
+      <h3 className="font-medium">For reference: published results</h3>
+      <p className="text-xs text-muted-foreground">Measured differently from our leak score, so not directly comparable.</p>
+      <ul className="mt-2 flex flex-col gap-1">
+        {points.map((p) => (
+          <li key={`${p.source}-${p.label}`} className="flex flex-wrap justify-between gap-2">
+            <span>{p.label} <span className="text-muted-foreground">· {p.source}</span></span>
+            <span className="tabular-nums">
+              {exact(p.leakage)} leaked{p.utility !== null && ` · utility ${exact(p.utility)}`}
+            </span>
+            {p.note && <span className="w-full text-xs text-muted-foreground">{p.note}</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

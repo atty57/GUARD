@@ -34,7 +34,13 @@ function useScreen(): Screen {
 
 // One recorded run, as listed by GET /api/replay.
 // recorded_at is only set for real recordings (runs/live/), not hand-written fixtures.
-type RunInfo = { name: string; lanes: Lane[]; synthetic: boolean; recorded_at: string | null }
+// kind: golden = prepared demo run for the video, fixture = hand-written test data, live = saved
+// by Run live. synthetic is the same as kind === 'fixture' (kept so nothing older breaks).
+type RunInfo = {
+  name: string; lanes: Lane[]; kind: 'golden' | 'fixture' | 'live'; synthetic: boolean; recorded_at: string | null
+}
+// "golden_split_query_catch" -> "split query catch"
+const goldenTitle = (name: string) => name.replace(/^golden_/, '').replace(/_/g, ' ')
 
 // Replay = play back a recorded run. Live = actually run the agent now (GET /api/live/stream).
 type Mode = 'replay' | 'live'
@@ -374,6 +380,7 @@ function pickerLabels(runs: RunInfo[]): Record<string, string> {
 }
 
 function runLabel(run: RunInfo): string {
+  if (run.kind === 'golden') return `Golden · ${goldenTitle(run.name)}`
   if (!run.synthetic && run.recorded_at) {
     const when = new Date(run.recorded_at).toLocaleString(undefined, {
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit',
@@ -415,6 +422,13 @@ function SourceBanner({ playing, liveStatus, modelReplay, replayMiss }: {
         + 'live run, re-record the answers or run with an API key. Replays still work.'
       color = 'amber'
     }
+  } else if (playing.kind === 'golden') {
+    const when = playing.recorded_at
+      ? new Date(playing.recorded_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+      : 'earlier'
+    badge = 'Golden recording'
+    text = `Prepared demo run “${goldenTitle(playing.name)}”, recorded ${when}. Nothing is running now.`
+    color = 'gold'
   } else if (playing.synthetic) {
     badge = 'Synthetic fixture replay'
     text = `Hand-written test data for “${playing.name.replace(/_/g, ' ')}”, not a recording of a real agent run.`
@@ -433,6 +447,7 @@ function SourceBanner({ playing, liveStatus, modelReplay, replayMiss }: {
     emerald: { box: 'border-emerald-500/40 bg-emerald-500/10', badge: 'bg-emerald-500/20 text-emerald-700' },
     sky: { box: 'border-sky-500/40 bg-sky-500/10', badge: 'bg-sky-500/20 text-sky-700' },
     violet: { box: 'border-violet-500/40 bg-violet-500/10', badge: 'bg-violet-500/20 text-violet-700' },
+    gold: { box: 'border-yellow-500/40 bg-yellow-500/10', badge: 'bg-yellow-500/20 text-yellow-800' },
     amber: { box: 'border-amber-500/40 bg-amber-500/10', badge: 'bg-amber-500/20 text-amber-700' },
   }
   return (

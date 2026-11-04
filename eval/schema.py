@@ -7,11 +7,16 @@ the recorded runs. Until results land, the committed file holds placeholder numb
 What is in it follows PLAN §10:
 
 - ``conditions``: the 2×2 ablation at the policy's own ``tau``, one entry per condition.
-- ``tau_sweep``: the ``moat`` condition at five ``tau`` values, for the slider.
+- ``tau_sweep``: the ``moat`` condition at several ``tau`` values, for the slider. Empty until
+  the sweep has run.
 - ``attacks``: the scripted attack suite, recall per leak type; ``benign``: false-positive rate
-  on the controls.
+  on the controls. Empty / null until the suite has run.
+- ``utility.citation_recall`` is null while gold patents are unlabelled, ``utility.rubric``
+  while no judge has scored the reports.
 - ``comparisons``: paired tests between conditions, Holm-corrected.
 - ``latency_ms``: per guard tier.
+- ``external_reference``: published points (e.g. MosaicLeaks) drawn as their own labelled
+  series. They use a different leakage measure, so they never enter ``comparisons``.
 
 Units:
 
@@ -85,12 +90,15 @@ class Leakage(_M):
     bits: NonNegative                      # ledger bits, summed over secrets
     hit_within_2pct: Share                 # share of numeric secrets the observer guessed within ±2%
     categorical_gain: Estimate             # exact-match rate on name secrets, minus the empty-log rate
-    intent_similarity: Share               # observer's guess of the task vs the real task
+    # Word overlap of the observer's one-line guess with the task question. Raw, not a gain over
+    # the empty-log guess: knowing the company alone already earns some overlap.
+    intent_similarity: Share
 
 
 class Utility(_M):
-    citation_recall: Share                 # planted gold patents cited in the report
-    rubric: Share                          # blind LLM judge score, scaled to [0, 1]
+    # None until the input exists: gold patents not labelled yet, or no judge run.
+    citation_recall: Share | None = None   # planted gold patents cited in the report
+    rubric: Share | None = None            # LLM judge score of the report, scaled to [0, 1]
 
 
 class Flow(_M):
@@ -137,6 +145,26 @@ class Latency(_M):
     p95: float = Field(ge=0)
 
 
+class ExternalPoint(_M):
+    """A published result shown on the headline chart for reference only (PLAN §10), e.g. the
+    MosaicLeaks Qwen3-4B points. Its leakage measure is not ours, so it is never compared."""
+
+    source: str                            # e.g. "MosaicLeaks (arXiv 2605.30727)"
+    label: str                             # e.g. "Qwen3-4B, privacy prompt"
+    leakage: float
+    utility: float | None = None
+    note: str = ""
+
+
+class Quality(_M):
+    """How much of the input made it into the numbers. Anything but zeros needs a look."""
+
+    runs_scored: int = Field(ge=0)
+    runs_excluded: int = Field(ge=0)       # observer reply incomplete, so the run was left out
+    observer_failures: int = Field(ge=0)   # incomplete observer replies (distinct query logs)
+    judge_failures: int = Field(ge=0)      # rubric replies without a 1-5 score
+
+
 class Models(_M):
     agent: str
     observer: str
@@ -148,6 +176,9 @@ class EvalResults(_M):
     placeholder: bool
     generated_at: datetime
     split: Literal["dev", "test"]
+    # Docs as generated (CONFIDENTIAL label) or the same docs with the label removed (11/2 sync,
+    # #11). Each setting is scored into its own file; None for files from before the split.
+    setting: Literal["labeled", "unlabeled"] | None = None
     n_tasks: int = Field(ge=1)
     n_seeds: int = Field(ge=1)
     corpus_sha: str
@@ -156,8 +187,10 @@ class EvalResults(_M):
     conditions: list[ConditionResult]
     tau_sweep: list[ConditionResult]
     attacks: list[AttackResult]
-    benign: BenignResult
+    benign: BenignResult | None = None     # None until the attack suite has run
     comparisons: list[Comparison]
+    external_reference: list[ExternalPoint] = Field(default_factory=list)
+    quality: Quality | None = None         # set by eval/score.py; None in the placeholder
     latency_ms: dict[Literal["tier0", "tier1", "tier2", "total"], Latency]
     tier2_escalation_rate: float = Field(ge=0, le=1)
     cost_usd: float = Field(ge=0)
@@ -169,13 +202,16 @@ class EvalResults(_M):
             raise ValueError(f"conditions must be exactly {CONDITIONS} once each, got {conds}")
         if len({c.tau for c in self.conditions}) != 1:
             raise ValueError("the 2×2 conditions must share one tau")
+        # The sweep may be missing (not run yet). When present: ascending, distinct, moat
+        # only, and it includes the 2x2's own tau so the slider passes through that point.
         taus = [p.tau for p in self.tau_sweep]
-        if len(taus) != 5 or taus != sorted(set(taus)):
-            raise ValueError("tau_sweep needs 5 distinct tau values in ascending order")
-        if any(p.condition != "moat" for p in self.tau_sweep):
-            raise ValueError("tau_sweep runs the moat condition only")
-        if self.conditions[0].tau not in taus:
-            raise ValueError("tau_sweep must include the conditions' tau")
+        if taus:
+            if len(taus) < 2 or taus != sorted(set(taus)):
+                raise ValueError("tau_sweep needs 2+ distinct tau values in ascending order")
+            if any(p.condition != "moat" for p in self.tau_sweep):
+                raise ValueError("tau_sweep runs the moat condition only")
+            if self.conditions[0].tau not in taus:
+                raise ValueError("tau_sweep must include the conditions' tau")
         kinds = [a.leak_type for a in self.attacks]
         if len(kinds) != len(set(kinds)):
             raise ValueError("one attacks entry per leak type")

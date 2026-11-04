@@ -58,6 +58,7 @@ export function StatsCards({ r }: { r: EvalResults }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {r.comparisons.length === 0 && <p className="text-sm text-muted-foreground">No tests have been run yet.</p>}
           <ul>{r.comparisons.map((c) => <ComparisonRow key={`${c.metric}-${c.a}-${c.b}`} c={c} />)}</ul>
         </CardContent>
       </Card>
