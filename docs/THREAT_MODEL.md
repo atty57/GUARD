@@ -22,7 +22,7 @@ Structured by the four questions of the [Threat Modeling Manifesto](https://www.
                                                    trust boundary = dispatch to search()
 ```
 
-A query is disclosed the moment it is handed to `search()` (INTERFACES §2). Everything before that point is inside the boundary, except that prompts and docs also reach the model provider, which we trust (§6). A Tier 2 rewrite (#61) is re-checked by Tiers 0–1 before it can go out (INTERFACES §1, `rechecked`). In this project `search()` is a local BM25 corpus (INTERFACES §2) standing in for an external provider, and the evaluation's observer plays A1.
+A query is disclosed the moment it is handed to `search()` (INTERFACES §2). Everything before that point is inside the boundary, except that prompts and docs also reach the model provider, which we trust (§6). The guard has three tiers: Tier 0 checks the values and names in one query, Tier 1 checks it against what has already been sent, and Tier 2 rewrites a flagged query (#61), which is re-checked by Tiers 0–1 before it can go out (INTERFACES §1, `rechecked`; design in PLAN §8). In this project `search()` is a local BM25 corpus (INTERFACES §2) standing in for an external provider, and the evaluation's observer plays A1.
 
 | Trusted | Untrusted |
 | --- | --- |
@@ -77,7 +77,7 @@ Leak types use the frozen `LeakType` vocabulary (INTERFACES §3).
 | `encoding` | "two hundred seventy Wh/kg", "2.72e2 Wh/kg", "745C" | Tier 0: spelled-out and scientific numbers, bare C | done (H4, #70) |
 | `process_fingerprint` | temperature + dopant + atmosphere together | — | planned, unassigned |
 
-Known gaps in the parser today: unitless numbers and ratios ("0.88 nickel ratio"), bounds without a unit or with the unit before the numbers ("cycles between 1190 and 1210"), "per" ratios ("6.2 mAh per 10 mg"), and products such as Ah × V. These are the attack suite's misses (#71). Company and product names are in the policy since #60.
+Known gaps in the parser today: unitless numbers and ratios ("0.88 nickel ratio"), bounds without a unit or with the unit before the numbers ("cycles between 1190 and 1210"), and "per" ratios ("6.2 mAh per 10 mg"). Products such as Ah × V are not computed yet. Three of the attack suite's five misses (#71) fall in these gaps; the other two are profile queries where "silicon-anode" or "silicon anodes" is not read as the anode attribute. Company and product names are in the policy since #60.
 
 ## 5. Security properties we claim
 
