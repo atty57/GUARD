@@ -123,3 +123,36 @@ def test_history_accepts_sent_queries(policy):
     hist = [{"query": "high-nickel cathode patents", "hop": 1, "run_id": "r1"}]
     r = asyncio.run(check("silicon anode review", hist, policy))
     assert r.action == "pass" and set(r.latency_ms) == {"tier0", "tier1", "total"}
+
+
+# --- company and product names (policy.identifiers) ------------------------------------------
+@pytest.mark.parametrize("draft", [
+    "Halden HX-9 pouch cell energy density",
+    "HX-9 cathode patents",
+    "hx 9 cycle life",
+    "HX9 supplier",
+    "Halden Cells silicon anode",
+])
+def test_blocks_company_and_product_names(policy, draft):
+    r = run(draft, policy)
+    assert r.action == "block" and r.tier == 0 and r.block_kind == "redraftable"
+    assert r.leak_types == ["identifier"] and r.secrets_touched == []
+    assert all("Halden" not in x and "HX" not in x for x in r.reasons)
+
+
+@pytest.mark.parametrize("draft", [
+    "HX-90 battery",                 # another product number
+    "THX-9 audio",                   # name inside a longer token
+    "Haldenstein pouch cells",
+])
+def test_names_need_word_boundaries(policy, draft):
+    assert run(draft, policy).action == "pass"
+
+
+def test_policy_hash_ignores_empty_identifiers(policy):
+    from guard.policy import policy_hash
+    no_names = Policy.model_validate({**policy.model_dump(), "identifiers": []})
+    explicit = Policy.model_validate({k: v for k, v in no_names.model_dump().items()
+                                      if k != "identifiers"})
+    assert policy_hash(no_names) == policy_hash(explicit)
+    assert policy_hash(no_names) != policy_hash(policy)
