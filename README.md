@@ -1,51 +1,72 @@
 # MOAT Guard
 
-A privacy guard that sits at the **trust boundary** between a deep-research agent and web search. The agent reads internal battery-R&D docs and drafts search queries; MOAT Guard checks each query against the documents' secrets **and the full history of what's already been sent**, then **passes, rewrites, or blocks** it. A blocked query never reaches search.
+**A privacy guard that sits between a deep-research agent and web search, and stops it from leaking your secrets one query at a time.**
 
-It stops two things a "do not disclose" prompt can't:
+<!-- TODO: replace with the recorded demo GIF (docs/demo.gif) -->
+![MOAT Guard demo — No Guard vs MOAT side by side](docs/demo.gif)
+
+## Run in 60s
+
+```
+make demo    # → http://127.0.0.1:8000
+```
+
+No API key needed — it replays recorded runs by default.
+
+**Windows:** `make` may not be installed. Run the three lines by hand instead:
+
+```
+uv sync
+cd web && npm ci && npm run build && cd ..
+uv run uvicorn api.main:app --host 127.0.0.1 --port 8000
+```
+
+## What it does
+
+A deep-research agent reads internal battery-R&D docs and drafts web-search queries. MOAT Guard checks every outgoing query against the documents' secrets **and the full history of what's already been sent**, then **passes, rewrites, or blocks** it. A blocked query never reaches search. It stops two things a "do not disclose" prompt can't:
 
 - **direct leaks** — a secret value appears in a query;
 - **mosaic leaks** — individually-safe queries that together narrow a secret or fingerprint a product.
 
-Threat model: the **search provider is the adversary** and sees only the queries; the LLM provider is trusted.
+**Threat model:** the **search provider is the adversary** and sees only the queries; the LLM provider is trusted. Full model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
-> ⚠️ **Work in progress** — built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026). **Local-only: no hosting, no deployment.** Interfaces are frozen (`moat.v2`); the pipeline, guard, data, and UI are under active development.
+## How Meta models are used
 
-## Team
+Muse Spark 1.3 via the Meta Model API powers three roles:
 
-| Role | Person | Owns |
-|---|---|---|
-| AI Agent Engineer | Atharva | Agent graph, model client, patent corpus + search, data generation, experiment runner |
-| Security & Evaluation Lead | Hyeseong | Threat model, `guard.check()`, disclosure ledger, data spec, attacker/observer + scoring |
-| Full-Stack Engineer | Sebika | FastAPI + SSE backend, React app, replay UI |
+- **Agent** — drafts queries, reflects on results, writes the final report.
+- **Tier 2 guard rewrite** — on escalation, rewrites a risky query to drop the leak (re-checked by Tiers 0–1 before it can go out).
+- **Observer** — the attacker that reads the query log and tries to recover each secret, scoring how much leaked.
 
-## Layout
+We never use Meta's server-side `web_search` tool — it would bypass the guard. Search is a local USPTO BM25 corpus.
 
-```text
-agent/   graph, model client, search, event models   (Atharva)
-guard/   check, ledger, policy, tests                 (Hyeseong)
-eval/    experiment runner, observer, scoring         (Atharva + Hyeseong)
-data/    synthetic doc + secret generation
-corpus/  USPTO patent corpus build (SQLite FTS5)
-api/     FastAPI + SSE                                 (Sebika)
-web/     Vite + React + TS + Tailwind                 (Sebika)
-runs/    recorded runs + fixtures (replay)
-docs/    PLAN, INTERFACES, DATA_SPEC
+## Results
+
+| Condition | Leakage ↓ | Utility ↑ | Cost/run |
+|---|---|---|---|
+| `none` (no guard) | TODO | TODO | TODO |
+| `prompt` (do-not-disclose) | TODO | TODO | TODO |
+| `moat` (guard) | TODO | TODO | TODO |
+| `moat_prompt` (guard + prompt) | TODO | TODO | TODO |
+
+Reproduce (needs a Meta API key in `.env`):
+
+```
+# one Halden pilot cell
+uv run python -m eval.run --company "Halden Cells" --seeds 0 --llm-mode record --out-root runs/pilot
+
+# full grid: 4 conditions × tasks + τ sweep
+uv run python -m eval.run --seeds 0 --tau 0.6 0.7 0.8 0.9 1.0
+
+# then score (Hyeseong's harness — reads the run sidecars, computes leakage/utility)
+uv run python -m eval.score runs/pilot
 ```
 
-## Docs
+## Limitations
 
-- [docs/PLAN.md](docs/PLAN.md) — shared project plan (what, how, timeline, risks)
-- [docs/INTERFACES.md](docs/INTERFACES.md) — frozen `moat.v2` contract: guard hook, `search()`, event stream
-- [docs/DATA_SPEC.md](docs/DATA_SPEC.md) — dataset spec (secrets, splits, policy profile)
-- [Project board](https://github.com/atty57/GUARD/projects) — tasks and milestones
+- **Halden dev split only** — results are the one dev company (5 docs, 5 tasks), not the held-out test split.
+- **One seed.** No variance estimate yet.
+- **Synthetic secrets.** Planted values, not a real company's data.
+- **INTERNAL-marking caveat** — the no-guard baseline under-leaks partly because the docs are marked CONFIDENTIAL, which already discourages the agent from quoting their specifics; a fix is data-side, not guard-side.
 
-## Conventions
-
-- One branch per issue (`atharva/12-llm-client`), PR into `main`, `Closes #N` in the PR body.
-- Changes to `docs/INTERFACES.md` or `agent/events.py` need a teammate's approval.
-- No `.env` in git. All secrets in the repo are synthetic.
-
-## Quickstart
-
-_TODO: setup and run instructions once the pipeline lands._
+Built Oct 26 – Nov 4, 2026 for the Meta Global AI Developer Hackathon.
