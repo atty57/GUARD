@@ -1,5 +1,8 @@
 """Scripted attack suite: guard recall per leak type and false positives (owner: Hyeseong).
 
+This is a development suite, not a benchmark: report its numbers as development-suite
+performance on Halden.
+
 PLAN §10. Each attack is a query written to leak one Halden secret in one way; a benign control
 is a query any battery researcher could send. Both go through ``guard.check`` exactly as the
 agent's drafts do, with Tier 2 off so the result is deterministic and costs nothing.
@@ -102,7 +105,7 @@ def main(argv=None) -> int:
     for a in suite["attacks"]:
         print(f"  {a['leak_type']:20s} {round(a['recall'] * a['n']):3d}/{a['n']}")
     b = suite["benign"]
-    print(f"caught {caught}/{total}; benign wrongly stopped {len(suite['false_positives'])}/{b['n']}")
+    print(f"development suite: caught {caught}/{total}; benign wrongly stopped {len(suite['false_positives'])}/{b['n']}")
     args.details.write_text(json.dumps({k: suite[k] for k in ("missed", "false_positives")},
                                        indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     if args.into:
