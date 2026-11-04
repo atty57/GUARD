@@ -19,7 +19,13 @@ def read_json(path: Path):
 
 
 def digest(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """sha256 of the file's lines with CRLF normalized to LF.
+
+    The archived sources are committed as LF, but a checkout with ``core.autocrlf`` (or a
+    committed ``.gitattributes``) may hand us CRLF bytes. The recorded digests were taken
+    over LF content, so hash the normalized text instead of the platform-dependent bytes.
+    """
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def load_lane(path: Path, meta_path: Path, condition: str) -> tuple[list[dict], dict]:

@@ -1,0 +1,4 @@
+# Golden recordings are hash-checked byte-for-byte by agent/golden.py: the archived run
+# sources and the hashes in their manifest must stay LF on every platform, otherwise a
+# Windows (core.autocrlf) or Mac checkout hashes different bytes than the recorded digests.
+runs/golden/sources/** text eol=lf
