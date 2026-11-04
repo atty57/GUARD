@@ -403,10 +403,10 @@ function SourceBanner({ playing, liveStatus, modelReplay, replayMiss }: {
 
   // Full class names written out so Tailwind keeps them in the build.
   const styles: Record<string, { box: string; badge: string }> = {
-    emerald: { box: 'border-emerald-500/40 bg-emerald-500/10', badge: 'bg-emerald-500/20 text-emerald-300' },
-    sky: { box: 'border-sky-500/40 bg-sky-500/10', badge: 'bg-sky-500/20 text-sky-300' },
-    violet: { box: 'border-violet-500/40 bg-violet-500/10', badge: 'bg-violet-500/20 text-violet-300' },
-    amber: { box: 'border-amber-500/40 bg-amber-500/10', badge: 'bg-amber-500/20 text-amber-300' },
+    emerald: { box: 'border-emerald-500/40 bg-emerald-500/10', badge: 'bg-emerald-500/20 text-emerald-700' },
+    sky: { box: 'border-sky-500/40 bg-sky-500/10', badge: 'bg-sky-500/20 text-sky-700' },
+    violet: { box: 'border-violet-500/40 bg-violet-500/10', badge: 'bg-violet-500/20 text-violet-700' },
+    amber: { box: 'border-amber-500/40 bg-amber-500/10', badge: 'bg-amber-500/20 text-amber-700' },
   }
   return (
     <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-4 py-2 text-sm ${styles[color].box}`}>
@@ -491,17 +491,17 @@ function LaneStatus({ lane, waiting }: { lane: LaneView; waiting: boolean }) {
   if (lane.complete) {
     const failed = lane.complete.status === 'failed'
     if (failed && lane.replayMiss) {
-      return <p className="text-sm text-amber-400">Stopped: no saved model answer</p>
+      return <p className="text-sm text-amber-700">Stopped: no saved model answer</p>
     }
     return (
-      <p className={`text-sm ${failed ? 'text-red-400' : 'text-muted-foreground'}`}>
+      <p className={`text-sm ${failed ? 'text-red-700' : 'text-muted-foreground'}`}>
         {failed ? 'Run failed' : 'Done'}
       </p>
     )
   }
   if (lane.started && !waiting) {
     // The stream ended (or was closed) before this lane sent run_complete.
-    return <p className="text-sm text-amber-400">Stopped before finishing</p>
+    return <p className="text-sm text-amber-700">Stopped before finishing</p>
   }
   if (lane.started) {
     return (

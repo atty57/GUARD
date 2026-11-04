@@ -24,7 +24,7 @@ export function HopCard({ hop }: { hop: HopView }) {
         {/* A poisoned page tried to make the agent leak (the attack demo). */}
         {hop.injections.map((inj, i) => (
           <div key={i} className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-            <p className="font-medium text-amber-400">
+            <p className="font-medium text-amber-700">
               Poisoned page detected · instruction {inj.action === 'blocked' ? 'blocked' : 'ignored'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -57,7 +57,7 @@ export function HopCard({ hop }: { hop: HopView }) {
           err.replayMiss ? (
             // No saved model answer for this step: explain it, keep the raw error as a tooltip.
             <div key={i} title={err.message} className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-              <p className="font-medium text-amber-400">
+              <p className="font-medium text-amber-700">
                 {err.dispatched
                   ? 'Query was sent, then the run stopped: no saved model answer for the next step'
                   : 'Stopped before sending: no saved model answer for this step'}
@@ -68,12 +68,12 @@ export function HopCard({ hop }: { hop: HopView }) {
             </div>
           ) : err.dispatched ? (
             <div key={i} className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-              <p className="font-medium text-amber-400">Query was sent, but the {err.where} step failed</p>
+              <p className="font-medium text-amber-700">Query was sent, but the {err.where} step failed</p>
               <p className="mt-1 text-xs text-muted-foreground">{err.message}</p>
             </div>
           ) : (
             <div key={i} className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm">
-              <p className="font-medium text-red-400">Blocked: the {err.where} step failed before sending</p>
+              <p className="font-medium text-red-700">Blocked: the {err.where} step failed before sending</p>
               <p className="mt-1 text-xs text-muted-foreground">{err.message}</p>
             </div>
           ),
@@ -81,7 +81,7 @@ export function HopCard({ hop }: { hop: HopView }) {
 
         {hop.skipped && (
           <div className="flex flex-col gap-1">
-            <Badge className="bg-red-500/15 text-red-400">Hop skipped</Badge>
+            <Badge className="bg-red-500/15 text-red-700">Hop skipped</Badge>
             <p className="text-sm">{SKIP_REASON[hop.skipped.reason] ?? hop.skipped.reason}</p>
             {hop.skipped.detail && <p className="text-xs text-muted-foreground">{hop.skipped.detail}</p>}
           </div>

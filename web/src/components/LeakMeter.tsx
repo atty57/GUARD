@@ -42,9 +42,9 @@ function policyBreaches(guess: Range, limit: SecretLimit): string[] {
   return out
 }
 
-const EXPOSED = { label: 'Exposed', bar: 'bg-red-500', badge: 'bg-red-500/15 text-red-400' }
-const NARROWED = { label: 'Narrowed', bar: 'bg-amber-500', badge: 'bg-amber-500/15 text-amber-400' }
-const PROTECTED = { label: 'Protected', bar: 'bg-emerald-500', badge: 'bg-emerald-500/15 text-emerald-400' }
+const EXPOSED = { label: 'Exposed', bar: 'bg-red-500', badge: 'bg-red-500/15 text-red-700' }
+const NARROWED = { label: 'Narrowed', bar: 'bg-amber-500', badge: 'bg-amber-500/15 text-amber-700' }
+const PROTECTED = { label: 'Protected', bar: 'bg-emerald-500', badge: 'bg-emerald-500/15 text-emerald-700' }
 
 // Exposed = breaks this secret's policy. Narrowed = within policy but under half the prior range.
 // Without policy limits for this secret, fall back to a fixed share of the prior range.
@@ -120,11 +120,11 @@ export function LeakMeter({ lane, priors, limits }: {
               </div>
 
               {lv.breaches.map((b) => (
-                <p key={b} className="text-xs text-red-400">{b}</p>
+                <p key={b} className="text-xs text-red-700">{b}</p>
               ))}
 
               {stopped.map((p, i) => (
-                <p key={i} className="text-xs text-red-400">
+                <p key={i} className="text-xs text-red-700">
                   MOAT prevented this from narrowing to {span(p.after)} {unit}
                 </p>
               ))}

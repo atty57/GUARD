@@ -32,7 +32,7 @@ export function EvalDashboard() {
     return (
       <main className="p-8">
         <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm">
-          <p className="font-medium text-red-400">Couldn't load the experiment results</p>
+          <p className="font-medium text-red-700">Couldn't load the experiment results</p>
           <p className="mt-1 text-muted-foreground">{load.message}</p>
         </div>
       </main>
@@ -45,7 +45,7 @@ export function EvalDashboard() {
       {r.placeholder && (
         // Until the real eval run lands, the file holds made-up numbers. Say so loudly.
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm">
-          <Badge className="bg-amber-500/20 text-amber-300">Placeholder numbers</Badge>
+          <Badge className="bg-amber-500/20 text-amber-700">Placeholder numbers</Badge>
           <span className="text-muted-foreground">
             These are made-up values to show the layout. Real results replace them after the evaluation run.
           </span>

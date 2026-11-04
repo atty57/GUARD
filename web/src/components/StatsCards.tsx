@@ -32,7 +32,7 @@ function ComparisonRow({ c }: { c: Comparison }) {
           difference {points(c.effect)} · p = {pValue(c.p_holm)} ({c.test})
         </span>
       </span>
-      <Badge className={significant ? 'bg-emerald-500/15 text-emerald-400' : 'bg-secondary text-muted-foreground'}>
+      <Badge className={significant ? 'bg-emerald-500/15 text-emerald-700' : 'bg-secondary text-muted-foreground'}>
         {significant ? 'significant' : 'not significant'}
       </Badge>
     </li>
