@@ -82,7 +82,7 @@ def _spelled_to_digits(text: str) -> str:
 
 
 # --- other encodings ----------------------------------------------------------------------------
-_SCI = re.compile(rf"\b(\d+(?:\.\d+)?)\s*(?:[eE]\s*|[x×]\s*10\s*\^\s*)([+-]?\d+)\b")
+_SCI = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:[eE]\s*|[x×]\s*10\s*\^\s*)([+-]?\d+)\b")
 _BARE_C = re.compile(r"\b(\d{3,4}(?:\.\d+)?)\s?C\b(?![a-z])")    # 745C, 745 C; not 1C or 4C
 
 

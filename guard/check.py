@@ -40,6 +40,9 @@ from guard import ledger, normalize, profile, tier2
 from guard.policy import Policy, SecretSpec
 from guard.quantities import Quantity, extract_quantities, family, to_canonical, unit_id
 
+# Bump when a change can alter a decision; eval/run.py records it per guarded run.
+GUARD_BEHAVIOR_VERSION = "g.v2"   # v2: Tier 0 reads encoded, relative and derived values
+
 Action = Literal["pass", "rewrite", "block"]
 BlockKind = Literal["redraftable", "unsatisfiable"]
 # Same vocabulary as agent/events.py `LeakType`; the guard does not import the event schema.

@@ -46,6 +46,7 @@ from pathlib import Path
 
 from agent import graph as graphmod
 from configs import CONDITIONS, make_policy
+from guard.check import GUARD_BEHAVIOR_VERSION
 from guard.policy import policy_hash
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -141,6 +142,8 @@ class CellPlan:
         t2 = _tier2_fingerprint(self.tier2 and self.cell.condition in ("moat", "moat_prompt"))
         if t2 is not None:                         # omitted when off ⇒ pre-Tier-2 fingerprint unchanged
             payload["tier2"] = t2
+        if self.cell.condition in ("moat", "moat_prompt"):   # only guarded lanes call the guard
+            payload["guard"] = GUARD_BEHAVIOR_VERSION
         blob = json.dumps(payload, ensure_ascii=False, sort_keys=False)
         self.fingerprint = hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
@@ -411,6 +414,8 @@ async def run_cell(plan: CellPlan, *, root: Path, client_factory, guard=None, se
         "model": plan.model, "policy_hash": plan.policy_hash,
         "input_fingerprint": plan.fingerprint,
         "graph_behavior_version": graphmod.GRAPH_BEHAVIOR_VERSION,
+        "guard_behavior_version": (GUARD_BEHAVIOR_VERSION
+                                   if c.condition in ("moat", "moat_prompt") else None),
         "recording_file": _rel(rec) if rec.exists() else None,
         "status": status, "llm_mode": plan.llm_mode, "corpus_sha": plan.corpus_sha,
         "hops": (rc or {}).get("hops"), "sent": (rc or {}).get("sent"),
