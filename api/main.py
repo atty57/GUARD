@@ -33,6 +33,8 @@ LLM_FIXTURE = Path(__file__).resolve().parent.parent / "runs" / "recordings" / "
 # Experiment results for the dashboard (S5). Written by Hyeseong's eval/score.py; until the real
 # run lands it holds placeholder numbers with "placeholder": true. Format: eval/schema.py.
 EVAL_RESULTS = Path(__file__).resolve().parent.parent / "eval" / "eval_results.json"
+# The same experiment scored in the "unlabeled" setting (Hyeseong scores both, with --setting).
+EVAL_RESULTS_UNLABELED = EVAL_RESULTS.with_name("eval_results.unlabeled.json")
 # The built React app (`npm run build` in web/). Only there after a build, e.g. `make demo`.
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 
@@ -46,26 +48,30 @@ NO_CACHE = {"Cache-Control": "no-cache"}
 
 
 @app.get("/api/eval")
-def eval_results():
+def eval_results(setting: Literal["labeled", "unlabeled"] = "labeled"):
     """The experiment results the dashboard shows, checked against the moat.eval.v1 schema.
+
+    ?setting= picks which scoring to show: labeled (the default, eval_results.json) or unlabeled
+    (eval_results.unlabeled.json). Anything else is a 422, like ?baseline= on the live stream.
 
     Read from disk on every request, so a new eval_results.json shows up without a restart.
     Every answer says "no-cache", so the browser asks again each time instead of reusing an old
     answer (it had kept a 404 from when the file was missing).
     """
-    if not EVAL_RESULTS.is_file():
-        raise HTTPException(status_code=404, detail="No eval results yet (eval/eval_results.json)",
+    path = EVAL_RESULTS if setting == "labeled" else EVAL_RESULTS_UNLABELED
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"No eval results yet (eval/{path.name})",
                             headers=NO_CACHE)
     # Imported here rather than at the top, so the rest of the API still starts on a checkout
     # without eval/schema.py (Hyeseong's #53).
     from pydantic import ValidationError
     from eval.schema import load_results
     try:
-        results = load_results(EVAL_RESULTS)
+        results = load_results(path)
     except ValidationError as exc:
         # A results file that doesn't match the schema is a bug to fix, not something to show.
         raise HTTPException(status_code=500, headers=NO_CACHE,
-                            detail=f"eval_results.json doesn't match moat.eval.v1: {exc}") from exc
+                            detail=f"{path.name} doesn't match moat.eval.v1: {exc}") from exc
     return JSONResponse(results.model_dump(mode="json", by_alias=True), headers=NO_CACHE)
 
 
