@@ -75,6 +75,8 @@ function laneGuesses(lane: LaneView): Map<string, Range> {
 // One word for a whole lane, shown next to its title: its worst secret ("Exposed" if any secret
 // breaks the policy). null while nothing is known yet. Same rules as the meter below, so the
 // badge and the meter can never disagree.
+// Lives here (not in its own file) so it shares the meter's rules; only costs hot-reload speed.
+// eslint-disable-next-line react-refresh/only-export-components
 export function laneVerdict(lane: LaneView, priors: Record<string, PriorInfo>, limits: Record<string, SecretLimit>) {
   let worst: typeof EXPOSED | typeof NARROWED | typeof PROTECTED | null = null
   for (const [dim, guess] of laneGuesses(lane)) {

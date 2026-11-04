@@ -92,7 +92,7 @@ function App() {
     const name = runs.find((r) => r.name.startsWith('golden_'))?.name ?? 'compare_run'
     setMode('replay')
     setSelected(name)
-    window.location.hash = '#compare'
+    window.location.assign('#compare')   // same as setting the hash; useScreen follows it
     startReplay(name)
   }
 
