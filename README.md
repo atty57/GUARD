@@ -85,7 +85,7 @@ uv run python -m eval.score --runs runs/pilot --setting labeled --out eval/eval_
 - **Halden dev split only** — results are the one dev company (5 docs, 5 tasks), not the held-out test split.
 - **One seed.** No variance estimate yet.
 - **Synthetic secrets.** Planted values, not a real company's data.
-- **INTERNAL-marking caveat** — the no-guard baseline under-leaks partly because the docs are marked CONFIDENTIAL, which already discourages the agent from quoting their specifics; a fix is data-side, not guard-side.
+- **Label caveat** — the no-guard baseline may under-leak partly because the docs still signal what's secret (the label, and each doc's `secrets:` list), which may discourage the agent from quoting their specifics; a fix is data-side, not guard-side.
 
 ## Team
 
