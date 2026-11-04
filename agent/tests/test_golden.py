@@ -1,14 +1,34 @@
 from copy import deepcopy
 import json
 from pathlib import Path
+import shutil
 
 from fastapi.testclient import TestClient
 import pytest
 
 from agent.events import EventAdapter, check_stream
-from agent.golden import build, observer_events, read_json
+from agent.golden import build, digest, observer_events, read_json
 
 SOURCE = Path(__file__).resolve().parents[2] / "runs/golden/sources/profile_rewrite"
+
+
+def test_digest_ignores_line_endings(tmp_path):
+    """A CRLF checkout must hash the same as the committed LF sources."""
+    lf, crlf = tmp_path / "lf.jsonl", tmp_path / "crlf.jsonl"
+    lf.write_bytes(b'{"a": 1}\n')
+    crlf.write_bytes(b'{"a": 1}\r\n')
+    assert digest(lf) == digest(crlf)
+
+
+def test_build_accepts_a_crlf_checkout(tmp_path):
+    """The builder works from a Windows-style checkout, not just LF sources."""
+    copy = tmp_path / "profile_rewrite"
+    shutil.copytree(SOURCE, copy)
+    for path in copy.iterdir():
+        if path.suffix in {".jsonl", ".json"}:
+            lf = path.read_bytes().replace(b"\r\n", b"\n")
+            path.write_bytes(lf.replace(b"\n", b"\r\n"))
+    assert build(copy) == build(SOURCE)
 
 
 def test_compare_preserves_queries_decisions_and_report():

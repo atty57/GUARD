@@ -39,6 +39,9 @@ make demo
 No model/search calls or database are needed to build or play this recording. The source
 subset is archived here so packaging does not depend on PR #72 merging. Original pilot
 artifacts are untouched. The `sources/` subdirectory is not listed by the replay picker.
+Source digests are computed over LF-normalized text and `.gitattributes` keeps the archived
+sources LF, so the builder and its tests pass from both Windows (CRLF) and macOS/Linux
+checkouts.
 
 ## Remaining HANDOFF scenarios
 
