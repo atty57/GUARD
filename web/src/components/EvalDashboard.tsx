@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import type { EvalResults, ExternalPoint, Quality } from '@/evalTypes'
 import { Badge } from '@/components/ui/badge'
 import { SectionHeading } from '@/components/SectionHeading'
+import { Button } from '@/components/ui/button'
 import { ConditionsTable } from '@/components/ConditionsTable'
 import { HeadlineChart } from '@/components/HeadlineChart'
 import { AttacksCard } from '@/components/AttacksCard'
@@ -12,19 +13,46 @@ import { StatsCards } from '@/components/StatsCards'
 // What the screen can be showing: still loading, an error message, or the results.
 type Load = { state: 'loading' } | { state: 'error'; message: string } | { state: 'ready'; data: EvalResults }
 
+// The same experiment is scored twice: with the company docs marked CONFIDENTIAL (labeled), and
+// without that marking (unlabeled), so the guard can't lean on it. One file each on the backend.
+type Setting = 'labeled' | 'unlabeled'
+const SETTINGS: { key: Setting; label: string }[] = [
+  { key: 'labeled', label: 'Labeled docs' },
+  { key: 'unlabeled', label: 'Unlabeled docs' },
+]
+
+// GET /api/eval?setting=... and turn the answer into a Load.
+async function fetchResults(setting: Setting): Promise<Load> {
+  try {
+    const res = await fetch(`/api/eval?setting=${setting}`)
+    if (res.ok) return { state: 'ready', data: await res.json() }
+    // The backend explains what went wrong in `detail` (e.g. "No eval results yet").
+    const body = await res.json().catch(() => ({}))
+    return { state: 'error', message: body.detail ?? `The server answered ${res.status}` }
+  } catch {
+    return { state: 'error', message: 'Could not reach the backend' }
+  }
+}
+
 export function EvalDashboard() {
-  const [load, setLoad] = useState<Load>({ state: 'loading' })
+  // Both files are fetched once, up front, so switching between them is instant.
+  const [loads, setLoads] = useState<Record<Setting, Load>>({
+    labeled: { state: 'loading' },
+    unlabeled: { state: 'loading' },
+  })
+  const [picked, setPicked] = useState<Setting>('labeled')
 
   useEffect(() => {
-    fetch('/api/eval')
-      .then(async (res) => {
-        if (res.ok) return setLoad({ state: 'ready', data: await res.json() })
-        // The backend explains what went wrong in `detail` (e.g. "No eval results yet").
-        const body = await res.json().catch(() => ({}))
-        setLoad({ state: 'error', message: body.detail ?? `The server answered ${res.status}` })
-      })
-      .catch(() => setLoad({ state: 'error', message: 'Could not reach the backend' }))
+    for (const { key } of SETTINGS) {
+      fetchResults(key).then((l) => setLoads((prev) => ({ ...prev, [key]: l })))
+    }
   }, [])
+
+  // The switch only appears when both files exist, so nobody clicks into an empty view.
+  // If only the unlabeled file exists, show that rather than an error.
+  const both = loads.labeled.state === 'ready' && loads.unlabeled.state === 'ready'
+  const setting: Setting = loads.labeled.state === 'error' && loads.unlabeled.state === 'ready' ? 'unlabeled' : picked
+  const load = loads[setting]
 
   if (load.state === 'loading') {
     return <main className="p-8 text-sm text-muted-foreground">Loading results…</main>
@@ -59,10 +87,12 @@ export function EvalDashboard() {
         <p className="mt-2 text-sm text-muted-foreground">
           {r.n_tasks} tasks × {r.conditions.length} conditions · {r.n_seeds} seed{r.n_seeds === 1 ? '' : 's'} ·{' '}
           {r.split} split · agent {r.models.agent}
-          {r.setting && <> · {r.setting === 'labeled' ? 'docs labeled CONFIDENTIAL' : 'docs without the CONFIDENTIAL label'}</>}
+          {r.setting && <> · {r.setting === 'labeled' ? 'docs labeled CONFIDENTIAL' : 'docs without the CONFIDENTIAL marking'}</>}
         </p>
         {r.quality && <QualityNote q={r.quality} />}
       </div>
+
+      {both && <SettingSwitch value={setting} onChange={setPicked} />}
 
       <HeadlineChart conditions={r.conditions} sweep={r.tau_sweep} />
       {(r.external_reference ?? []).length > 0 && <ExternalReference points={r.external_reference!} />}
@@ -70,6 +100,27 @@ export function EvalDashboard() {
       <AttacksCard attacks={r.attacks} benign={r.benign} />
       <StatsCards r={r} />
     </main>
+  )
+}
+
+// Labeled / Unlabeled switch, same look as the Replay / Live switch on Compare.
+function SettingSwitch({ value, onChange }: { value: Setting; onChange: (s: Setting) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-sm">
+      <div role="group" aria-label="Which results to show" className="flex rounded-lg border p-0.5">
+        {SETTINGS.map((s) => (
+          <Button key={s.key} size="sm" variant={value === s.key ? 'secondary' : 'ghost'}
+                  aria-pressed={value === s.key} onClick={() => onChange(s.key)}>
+            {s.label}
+          </Button>
+        ))}
+      </div>
+      <span className="text-muted-foreground">
+        {value === 'labeled'
+          ? 'Company docs are marked CONFIDENTIAL.'
+          : 'Same docs without the CONFIDENTIAL marking, so the guard can\'t rely on it.'}
+      </span>
+    </div>
   )
 }
 
