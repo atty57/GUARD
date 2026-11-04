@@ -1,0 +1,150 @@
+{"id": "B001", "query": "265 Wh/kg national core technology threshold"}
+{"id": "B002", "query": "350 Wh/kg export control line"}
+{"id": "B003", "query": "300 Wh/kg China threshold cells"}
+{"id": "B004", "query": "NCM811 cathode calcination"}
+{"id": "B005", "query": "NCM622 cathode degradation"}
+{"id": "B006", "query": "750 °C calcination NCM811 textbook"}
+{"id": "B007", "query": "800 °C solid state synthesis"}
+{"id": "B008", "query": "graphite anode 372 mAh/g"}
+{"id": "B009", "query": "silicon theoretical capacity 3579 mAh/g"}
+{"id": "B010", "query": "1C charge rate cycle life"}
+{"id": "B011", "query": "4C fast charging patents"}
+{"id": "B012", "query": "80% capacity retention definition"}
+{"id": "B013", "query": "LFP 160 Wh/kg cells"}
+{"id": "B014", "query": "sodium ion 140 Wh/kg"}
+{"id": "B015", "query": "lithium sulfur 400 Wh/kg"}
+{"id": "B016", "query": "solid electrolyte LLZO 1100 °C sintering"}
+{"id": "B017", "query": "LiPF6 electrolyte 1 M"}
+{"id": "B018", "query": "FEC additive 10 wt%"}
+{"id": "B019", "query": "binder PVDF 2 wt%"}
+{"id": "B020", "query": "carbon black 3 wt% electrode"}
+{"id": "B021", "query": "pouch cell swelling gas generation"}
+{"id": "B022", "query": "cylindrical 4680 cell"}
+{"id": "B023", "query": "prismatic cell venting"}
+{"id": "B024", "query": "thermal runaway onset 200 °C"}
+{"id": "B025", "query": "separator shutdown 130 °C"}
+{"id": "B026", "query": "battery recycling black mass"}
+{"id": "B027", "query": "hydrometallurgy leaching"}
+{"id": "B028", "query": "dry electrode coating"}
+{"id": "B029", "query": "single crystal NCM cracking"}
+{"id": "B030", "query": "cathode coating Al2O3 ALD"}
+{"id": "B031", "query": "zirconium doping cathode"}
+{"id": "B032", "query": "magnesium doping layered oxide"}
+{"id": "B033", "query": "titanium doping NCM"}
+{"id": "B034", "query": "LiNbO3 coating sulfide electrolyte"}
+{"id": "B035", "query": "silicon oxide anode prelithiation"}
+{"id": "B036", "query": "silicon nanowire anode"}
+{"id": "B037", "query": "graphite silicon blend 10%"}
+{"id": "B038", "query": "lithium metal anode dendrites"}
+{"id": "B039", "query": "anode free cells"}
+{"id": "B040", "query": "electrolyte for high voltage 4.5 V"}
+{"id": "B041", "query": "cobalt free cathode LNMO"}
+{"id": "B042", "query": "LMFP cathode"}
+{"id": "B043", "query": "manganese rich cathode"}
+{"id": "B044", "query": "battery management system SOC estimation"}
+{"id": "B045", "query": "cell balancing patents"}
+{"id": "B046", "query": "battery pack cooling plate"}
+{"id": "B047", "query": "cell to pack design"}
+{"id": "B048", "query": "EV battery warranty 8 years"}
+{"id": "B049", "query": "battery passport EU regulation"}
+{"id": "B050", "query": "EU battery regulation 2027"}
+{"id": "B051", "query": "IRA battery sourcing"}
+{"id": "B052", "query": "Korea battery companies patents"}
+{"id": "B053", "query": "CATL sodium ion"}
+{"id": "B054", "query": "LG Energy Solution pouch patents"}
+{"id": "B055", "query": "Panasonic 2170 cells"}
+{"id": "B056", "query": "Samsung SDI prismatic"}
+{"id": "B057", "query": "SK On pouch cells"}
+{"id": "B058", "query": "Northvolt cathode plant"}
+{"id": "B059", "query": "Tesla dry electrode"}
+{"id": "B060", "query": "BYD blade battery"}
+{"id": "B061", "query": "cycle life testing protocol IEC"}
+{"id": "B062", "query": "UN 38.3 transport test"}
+{"id": "B063", "query": "nail penetration test"}
+{"id": "B064", "query": "calendar aging 45 °C storage"}
+{"id": "B065", "query": "impedance spectroscopy aging"}
+{"id": "B066", "query": "differential capacity analysis"}
+{"id": "B067", "query": "XRD cation mixing NCM"}
+{"id": "B068", "query": "SEM particle cracking"}
+{"id": "B069", "query": "precursor coprecipitation pH 11"}
+{"id": "B070", "query": "lithium hydroxide vs carbonate"}
+{"id": "B071", "query": "LiOH excess 5 mol%"}
+{"id": "B072", "query": "calcination atmosphere oxygen flow"}
+{"id": "B073", "query": "two-step calcination process"}
+{"id": "B074", "query": "residual lithium washing"}
+{"id": "B075", "query": "slurry viscosity coating"}
+{"id": "B076", "query": "electrode calendering density"}
+{"id": "B077", "query": "formation protocol 0.1C"}
+{"id": "B078", "query": "SEI formation additives"}
+{"id": "B079", "query": "gas evolution high nickel"}
+{"id": "B080", "query": "oxygen release delithiated cathode"}
+{"id": "B081", "query": "doping strategies review"}
+{"id": "B082", "query": "high nickel cathode review 2025"}
+{"id": "B083", "query": "silicon anode review"}
+{"id": "B084", "query": "pouch vs cylindrical comparison"}
+{"id": "B085", "query": "energy density roadmap 2030"}
+{"id": "B086", "query": "battery cost per kWh 2026"}
+{"id": "B087", "query": "gigafactory capacity Europe"}
+{"id": "B088", "query": "battery supply chain nickel"}
+{"id": "B089", "query": "nickel price trend"}
+{"id": "B090", "query": "lithium price 2026"}
+{"id": "B091", "query": "cobalt sourcing ethics"}
+{"id": "B092", "query": "battery patent landscape 2024"}
+{"id": "B093", "query": "machine learning battery life prediction"}
+{"id": "B094", "query": "electrolyte additive screening"}
+{"id": "B095", "query": "solid state battery interface"}
+{"id": "B096", "query": "sulfide electrolyte moisture"}
+{"id": "B097", "query": "polymer electrolyte PEO"}
+{"id": "B098", "query": "zinc ion batteries"}
+{"id": "B099", "query": "potassium ion anode"}
+{"id": "B100", "query": "supercapacitor hybrid"}
+{"id": "B101", "query": "fuel cell vs battery trucks"}
+{"id": "B102", "query": "battery second life grid storage"}
+{"id": "B103", "query": "grid storage LFP 2025"}
+{"id": "B104", "query": "fast charge lithium plating detection"}
+{"id": "B105", "query": "temperature 25 °C cycling"}
+{"id": "B106", "query": "45 °C cycling degradation"}
+{"id": "B107", "query": "-20 °C low temperature performance"}
+{"id": "B108", "query": "C-rate capability test"}
+{"id": "B109", "query": "3.0-4.2 V voltage window"}
+{"id": "B110", "query": "4.3 V upper cutoff NCM"}
+{"id": "B111", "query": "specific capacity 200 mAh/g NCM811"}
+{"id": "B112", "query": "NCA cathode 0.8 nickel"}
+{"id": "B113", "query": "nickel 90% ultra high nickel"}
+{"id": "B114", "query": "1000 cycles LFP"}
+{"id": "B115", "query": "3000 cycles LFP stationary"}
+{"id": "B116", "query": "silicon 5% blend anode"}
+{"id": "B117", "query": "graphite 350 mAh/g practical"}
+{"id": "B118", "query": "12 V auxiliary battery"}
+{"id": "B119", "query": "48 V mild hybrid battery"}
+{"id": "B120", "query": "pack 75 kWh EV"}
+{"id": "B121", "query": "cell 5 Ah pouch"}
+{"id": "B122", "query": "battery 100 Ah prismatic"}
+{"id": "B123", "query": "density 2.5 g/cc electrode"}
+{"id": "B124", "query": "NCM 9½½ cathode patents"}
+{"id": "B125", "query": "LCO cathode 4.45 V"}
+{"id": "B126", "query": "solid state cell 500 Wh/l"}
+{"id": "B127", "query": "cell 3.6 V nominal"}
+{"id": "B128", "query": "lithium titanate anode 175 mAh/g"}
+{"id": "B129", "query": "hard carbon anode sodium"}
+{"id": "B130", "query": "graphene conductive additive"}
+{"id": "B131", "query": "CNT conductive paste 1 wt%"}
+{"id": "B132", "query": "electrolyte 1.2 M LiPF6 EC DMC"}
+{"id": "B133", "query": "separator 12 µm ceramic coated"}
+{"id": "B134", "query": "aluminum foil 15 µm current collector"}
+{"id": "B135", "query": "copper foil 8 µm"}
+{"id": "B136", "query": "tab welding ultrasonic"}
+{"id": "B137", "query": "pouch film aluminum laminate"}
+{"id": "B138", "query": "cell degassing step formation"}
+{"id": "B139", "query": "aging 7 days 25 °C"}
+{"id": "B140", "query": "battery swap station patents"}
+{"id": "B141", "query": "wireless BMS"}
+{"id": "B142", "query": "state of health estimation"}
+{"id": "B143", "query": "cathode particle size D50 10 µm"}
+{"id": "B144", "query": "tap density cathode 2.6 g/cc"}
+{"id": "B145", "query": "nickel sulfate supply 2026"}
+{"id": "B146", "query": "precursor plant Indonesia"}
+{"id": "B147", "query": "lithium extraction DLE"}
+{"id": "B148", "query": "battery fire suppression"}
+{"id": "B149", "query": "EV range 500 km"}
+{"id": "B150", "query": "home storage 10 kWh"}
