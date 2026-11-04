@@ -135,6 +135,30 @@ function Signpost() {
   )
 }
 
+// A pixel cloud: a small block sitting on a wider one. Drifts across the sky; a negative delay
+// starts each one part-way along, so the sky isn't empty when the page opens.
+const CLOUDS = [
+  { top: '10%', width: '11%', duration: 70, delay: -20 },
+  { top: '22%', width: '8%', duration: 95, delay: -65 },
+  { top: '6%', width: '9%', duration: 85, delay: -5 },
+]
+
+function Cloud({ top, width, duration, delay }: (typeof CLOUDS)[number]) {
+  return (
+    <div className="absolute aspect-[3/1] motion-reduce:!animate-none" aria-hidden
+         style={{ top, width, left: '20%', animation: `moat-drift ${duration}s linear ${delay}s infinite` }}>
+      <div className="absolute bottom-1/2 left-[25%] h-1/2 w-[40%] bg-white" />
+      <div className="absolute bottom-0 h-1/2 w-full bg-white" />
+    </div>
+  )
+}
+
+// Little light dashes on the water, a repeating tile that slides right, like a gentle current.
+const WATER_DASHES = `url("data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="22" shape-rendering="crispEdges">' +
+  '<rect x="6" y="5" width="10" height="2" fill="#bfdbfe"/><rect x="38" y="15" width="8" height="2" fill="#bfdbfe"/></svg>',
+)}")`
+
 const OUTCOMES = [
   { label: 'Pass', text: 'Harmless search? Let it through.', swatch: 'bg-emerald-200 border-emerald-700' },
   { label: 'Rewrite', text: 'Too revealing? Remove the clue.', swatch: 'bg-amber-200 border-amber-700' },
@@ -171,7 +195,10 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
         {/* ground, moat, bridge */}
         <div className="absolute inset-x-0 bottom-[30%] h-[8%] bg-emerald-300/70" />
         <div className="absolute inset-x-0 bottom-0 h-[30%] bg-sky-600/80" />
-        <div className="absolute bottom-[30%] left-[30%] h-[5%] w-[42%] bg-amber-800" />
+        <div className="absolute inset-x-0 bottom-0 h-[28%] opacity-70 motion-safe:animate-[moat-ripple_4s_steps(16)_infinite]"
+             style={{ backgroundImage: WATER_DASHES }} aria-hidden />
+        {CLOUDS.map((c, i) => <Cloud key={i} {...c} />)}
+        <div className="absolute bottom-[30%] left-[30%] h-[5%] w-[41%] bg-amber-800" />
 
         {/* the web side (left): a signpost, and a spy reading whatever gets out */}
         <Signpost />
@@ -182,7 +209,7 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
         </div>
 
         {/* castle (right), guard at the gate (middle), messengers heading out to the web (left) */}
-        <img src={castle} alt="" style={PIXEL} className="absolute bottom-[28%] right-[4%] h-[62%]" />
+        <img src={castle} alt="" style={PIXEL} className="absolute bottom-[28%] right-[1.5%] h-[62%]" />
         {/* Leans from his feet (origin-bottom) while reading each note; still for reduced motion. */}
         {/* Two movements, one on each layer so they don't override each other:
             the wrapper turns him around on a block (moat-stop), the image leans while he reads
