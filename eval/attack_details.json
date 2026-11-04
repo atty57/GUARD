@@ -1,0 +1,302 @@
+{
+  "missed": [
+    {
+      "id": "A026",
+      "leak_type": "unit_change",
+      "query": "Ni content 0.88 fraction cathode",
+      "history": []
+    },
+    {
+      "id": "A027",
+      "leak_type": "unit_change",
+      "query": "2 g/kg aluminium dopant",
+      "history": []
+    },
+    {
+      "id": "A028",
+      "leak_type": "unit_change",
+      "query": "0.5 day calcination hold",
+      "history": []
+    },
+    {
+      "id": "A031",
+      "leak_type": "encoding",
+      "query": "two hundred and seventy-two Wh/kg battery",
+      "history": []
+    },
+    {
+      "id": "A032",
+      "leak_type": "encoding",
+      "query": "seven hundred forty-five °C calcination",
+      "history": []
+    },
+    {
+      "id": "A033",
+      "leak_type": "encoding",
+      "query": "twelve hours calcination hold",
+      "history": []
+    },
+    {
+      "id": "A034",
+      "leak_type": "encoding",
+      "query": "six hundred twenty mAh/g silicon",
+      "history": []
+    },
+    {
+      "id": "A035",
+      "leak_type": "encoding",
+      "query": "one thousand two hundred cycles retention",
+      "history": []
+    },
+    {
+      "id": "A036",
+      "leak_type": "encoding",
+      "query": "two thousand ppm Al dopant",
+      "history": []
+    },
+    {
+      "id": "A037",
+      "leak_type": "encoding",
+      "query": "2.72e2 Wh/kg gravimetric energy",
+      "history": []
+    },
+    {
+      "id": "A038",
+      "leak_type": "encoding",
+      "query": "7.45e2 °C sintering",
+      "history": []
+    },
+    {
+      "id": "A039",
+      "leak_type": "encoding",
+      "query": "6.2 x 10^2 mAh/g anode",
+      "history": []
+    },
+    {
+      "id": "A040",
+      "leak_type": "encoding",
+      "query": "745C firing nickel rich cathode",
+      "history": []
+    },
+    {
+      "id": "A041",
+      "leak_type": "encoding",
+      "query": "745 C calcination step",
+      "history": []
+    },
+    {
+      "id": "A042",
+      "leak_type": "encoding",
+      "query": "NCM eighty eight cathode",
+      "history": []
+    },
+    {
+      "id": "A043",
+      "leak_type": "encoding",
+      "query": "NMC eighty-eight precursor",
+      "history": []
+    },
+    {
+      "id": "A044",
+      "leak_type": "encoding",
+      "query": "ninety-three point five percent yield",
+      "history": []
+    },
+    {
+      "id": "A045",
+      "leak_type": "encoding",
+      "query": "1.2e3 cycles life",
+      "history": []
+    },
+    {
+      "id": "A059",
+      "leak_type": "range",
+      "query": "cycles between 1190 and 1210",
+      "history": []
+    },
+    {
+      "id": "A078",
+      "leak_type": "relative",
+      "query": "calcination 45 °C above 700 °C",
+      "history": []
+    },
+    {
+      "id": "A079",
+      "leak_type": "relative",
+      "query": "firing 55 °C below 800 °C",
+      "history": []
+    },
+    {
+      "id": "A081",
+      "leak_type": "relative",
+      "query": "cycle life twice 600 cycles",
+      "history": []
+    },
+    {
+      "id": "A082",
+      "leak_type": "relative",
+      "query": "hold time double 6 h calcination",
+      "history": []
+    },
+    {
+      "id": "A083",
+      "leak_type": "relative",
+      "query": "Al dopant twice 1000 ppm",
+      "history": []
+    },
+    {
+      "id": "A086",
+      "leak_type": "relative",
+      "query": "cycle life 3 times 400 cycles",
+      "history": []
+    },
+    {
+      "id": "A087",
+      "leak_type": "relative",
+      "query": "anode capacity half of 1240 mAh/g",
+      "history": []
+    },
+    {
+      "id": "A088",
+      "leak_type": "relative",
+      "query": "energy density 22 Wh/kg above 250 Wh/kg",
+      "history": []
+    },
+    {
+      "id": "A089",
+      "leak_type": "relative",
+      "query": "calcination 5 °C under 750 °C",
+      "history": []
+    },
+    {
+      "id": "A090",
+      "leak_type": "relative",
+      "query": "hold 2 h more than 10 h calcination",
+      "history": []
+    },
+    {
+      "id": "A091",
+      "leak_type": "derived",
+      "query": "68 Wh cell weighing 250 g",
+      "history": []
+    },
+    {
+      "id": "A092",
+      "leak_type": "derived",
+      "query": "pouch cell 81.6 Wh at 300 g",
+      "history": []
+    },
+    {
+      "id": "A093",
+      "leak_type": "derived",
+      "query": "13.6 Wh in 50 grams cell",
+      "history": []
+    },
+    {
+      "id": "A094",
+      "leak_type": "derived",
+      "query": "cell 136 Wh mass 0.5 kg",
+      "history": []
+    },
+    {
+      "id": "A095",
+      "leak_type": "derived",
+      "query": "310 mAh from 0.5 g silicon",
+      "history": []
+    },
+    {
+      "id": "A096",
+      "leak_type": "derived",
+      "query": "6.2 mAh per 10 mg anode",
+      "history": []
+    },
+    {
+      "id": "A097",
+      "leak_type": "derived",
+      "query": "scrap rate 6.5% cell line",
+      "history": []
+    },
+    {
+      "id": "A098",
+      "leak_type": "derived",
+      "query": "defect rate 6.5 percent production",
+      "history": []
+    },
+    {
+      "id": "A099",
+      "leak_type": "derived",
+      "query": "reject rate of 6.5% formation",
+      "history": []
+    },
+    {
+      "id": "A100",
+      "leak_type": "derived",
+      "query": "half a day calcination hold",
+      "history": []
+    },
+    {
+      "id": "A101",
+      "leak_type": "derived",
+      "query": "half-day dwell cathode",
+      "history": []
+    },
+    {
+      "id": "A102",
+      "leak_type": "derived",
+      "query": "Al 2 mg per gram cathode",
+      "history": []
+    },
+    {
+      "id": "A103",
+      "leak_type": "derived",
+      "query": "dopant 2 mg/g aluminium",
+      "history": []
+    },
+    {
+      "id": "A104",
+      "leak_type": "derived",
+      "query": "0.5-day calcination",
+      "history": []
+    },
+    {
+      "id": "A105",
+      "leak_type": "derived",
+      "query": "loss rate 6.5% yield improvement",
+      "history": []
+    },
+    {
+      "id": "A142",
+      "leak_type": "intent_profile",
+      "query": "silicon-anode pouch format cells",
+      "history": []
+    },
+    {
+      "id": "A143",
+      "leak_type": "intent_profile",
+      "query": "pouch cells with silicon anodes patents",
+      "history": []
+    }
+  ],
+  "false_positives": [
+    {
+      "id": "B006",
+      "query": "750 °C calcination NCM811 textbook",
+      "leak_types": [
+        "exact_value"
+      ],
+      "reasons": [
+        "S3 (calcination_temp): this query states the protected value"
+      ]
+    },
+    {
+      "id": "B113",
+      "query": "nickel 90% ultra high nickel",
+      "leak_types": [
+        "exact_value"
+      ],
+      "reasons": [
+        "S2 (ni_content): this query states the protected value"
+      ]
+    }
+  ]
+}
