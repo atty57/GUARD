@@ -1,5 +1,6 @@
 // The intro screen ("01"): what MOAT is, in one picture.
 
+import { useEffect, useRef } from 'react'
 import castle from '@/assets/castle.png'
 import guard from '@/assets/guard.png'
 import messenger from '@/assets/messenger.png'
@@ -62,6 +63,16 @@ const OUTCOMES = [
 ]
 
 export function IntroPage({ onWatch }: { onWatch: () => void }) {
+  // The guard's lean and the messengers' trips are separate CSS animations. The browser can start
+  // them a moment apart (e.g. while an image loads), so restart them all together once the scene
+  // is on screen: then the guard always leans exactly while a messenger waits.
+  const scene = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const restart = () => scene.current?.getAnimations({ subtree: true }).forEach((a) => { a.currentTime = 0 })
+    const imgs = [...(scene.current?.querySelectorAll('img') ?? [])]
+    Promise.all(imgs.map((i) => (i.complete ? null : new Promise((r) => (i.onload = r))))).then(restart)
+  }, [])
+
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-8">
       <SectionHeading
@@ -72,6 +83,7 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
 
       {/* The scene. Positions are in % of the box, so it scales with the screen width. */}
       <div
+        ref={scene}
         role="img"
         aria-label="A castle with a moat. Messengers carry search queries out across the drawbridge, where a guard checks each one."
         className="relative aspect-[16/7] w-full overflow-hidden rounded-xl border-2 border-foreground/80 bg-sky-100 shadow-[6px_6px_0_0] shadow-foreground/80"
@@ -83,7 +95,14 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
 
         {/* castle (right), guard at the gate (middle), messengers heading out to the web (left) */}
         <img src={castle} alt="" style={PIXEL} className="absolute bottom-[28%] right-[4%] h-[62%]" />
-        <img src={guard} alt="" style={PIXEL} className="absolute bottom-[34%] left-[48%] h-[28%]" />
+        {/* Leans from his feet (origin-bottom) while reading each note; still for reduced motion. */}
+        {/* Two movements, one on each layer so they don't override each other:
+            the wrapper turns him around on a block (moat-stop, 9 s), the image leans while he reads
+            every note (moat-check, 3 s). Both stay still for reduced motion. */}
+        <div className="absolute bottom-[34%] left-[48%] h-[28%] motion-safe:animate-[moat-stop_9s_linear_infinite]">
+          <img src={guard} alt="" style={PIXEL}
+               className="h-full origin-bottom motion-safe:animate-[moat-check_3s_ease-in-out_infinite]" />
+        </div>
         {/* Still picture for people who turn off animations (motion-reduce), the loop for everyone else. */}
         <div className="motion-safe:hidden">
           <div className="absolute bottom-[34%] left-[36%] h-[28%]"><Messenger frame={0} /></div>

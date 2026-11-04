@@ -167,3 +167,23 @@
   13%, 22% { opacity: 1; transform: translateY(0) }
   24%, 100% { opacity: 0 }
 }
+
+/* The guard checks each note: leans toward the messenger (the castle side) and bobs twice, like
+   reading. 3 s = one messenger's turn, so it repeats in step with the trips (they start 3 s apart).
+   The messenger stands still from 12% to 20% of its 9 s trip = 1.08 s to 1.8 s = 36% to 60% here. */
+@keyframes moat-check {
+  0%, 34%   { transform: rotate(0) translateY(0) }
+  40%       { transform: rotate(5deg) translateY(-6%) }
+  46%       { transform: rotate(5deg) translateY(0) }
+  52%       { transform: rotate(5deg) translateY(-6%) }
+  60%, 100% { transform: rotate(0) translateY(0) }
+}
+
+/* On a block, the guard turns to face the messenger (sword first), as if stopping them.
+   9 s = the whole loop; the block messenger (starts at 6 s) waits from 7.08 s to 7.8 s and turns
+   back at 7.8 s, so the guard is flipped from 78% (7.0 s) to 92% (8.3 s). */
+@keyframes moat-stop {
+  0%, 78%    { transform: scaleX(1) }
+  78.01%, 92% { transform: scaleX(-1) }
+  92.01%, 100% { transform: scaleX(1) }
+}
