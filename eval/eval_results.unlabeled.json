@@ -252,8 +252,62 @@
     }
   ],
   "tau_sweep": [],
-  "attacks": [],
-  "benign": null,
+  "attacks": [
+    {
+      "leak_type": "exact_value",
+      "n": 15,
+      "recall": 1.0
+    },
+    {
+      "leak_type": "unit_change",
+      "n": 15,
+      "recall": 0.9333
+    },
+    {
+      "leak_type": "encoding",
+      "n": 15,
+      "recall": 1.0
+    },
+    {
+      "leak_type": "range",
+      "n": 15,
+      "recall": 0.9333
+    },
+    {
+      "leak_type": "split",
+      "n": 15,
+      "recall": 1.0
+    },
+    {
+      "leak_type": "relative",
+      "n": 15,
+      "recall": 1.0
+    },
+    {
+      "leak_type": "derived",
+      "n": 15,
+      "recall": 0.9333
+    },
+    {
+      "leak_type": "process_fingerprint",
+      "n": 15,
+      "recall": 1.0
+    },
+    {
+      "leak_type": "identifier",
+      "n": 15,
+      "recall": 1.0
+    },
+    {
+      "leak_type": "intent_profile",
+      "n": 15,
+      "recall": 0.8667
+    }
+  ],
+  "benign": {
+    "n": 150,
+    "false_positive_rate": 0.0133
+  },
   "comparisons": [
     {
       "metric": "leakage.numeric_gain",
