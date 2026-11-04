@@ -32,12 +32,17 @@ def sse_events(body: str) -> list:
 
 @pytest.fixture
 def runs(tmp_path, monkeypatch):
-    """Empty fixtures/ and live/ folders the API reads instead of the real ones."""
-    fixtures, live = tmp_path / "fixtures", tmp_path / "live"
-    fixtures.mkdir()
-    live.mkdir()
+    """Empty run folders the API reads instead of the real ones: fixtures/, live/, and both places
+    golden recordings can live (runs/golden/*.jsonl and runs/golden_*.jsonl). Without the golden
+    ones, the repo's real golden recording would show up in every list (Atharva's catch on #66)."""
+    runs_dir = tmp_path / "runs"
+    fixtures, live, golden = tmp_path / "fixtures", tmp_path / "live", runs_dir / "golden"
+    for d in (fixtures, live, golden):
+        d.mkdir(parents=True)
     monkeypatch.setattr(main, "FIXTURES_DIR", fixtures)
     monkeypatch.setattr(main, "LIVE_DIR", live)
+    monkeypatch.setattr(main, "RUNS_DIR", runs_dir)
+    monkeypatch.setattr(main, "GOLDEN_DIR", golden)
     return fixtures, live
 
 
@@ -62,6 +67,19 @@ def test_replay_list_labels_fixtures_and_live_runs(runs):
     assert live_run["synthetic"] is False
     assert live_run["recorded_at"] is not None                # taken from the hello event
     assert live_run["lanes"] == ["baseline", "moat"]
+
+
+def test_golden_recordings_are_listed_first_with_their_kind(runs):
+    fixtures, _ = runs
+    shutil.copy(FIXTURE, fixtures / "compare_run.jsonl")
+    shutil.copy(FIXTURE, main.GOLDEN_DIR / "profile_rewrite.jsonl")   # runs/golden/<name>.jsonl
+    shutil.copy(FIXTURE, main.RUNS_DIR / "golden_split.jsonl")        # runs/golden_<name>.jsonl
+
+    listed = client.get("/api/replay").json()["runs"]
+
+    assert [r["name"] for r in listed] == ["golden_profile_rewrite", "golden_split", "compare_run"]
+    assert [r["kind"] for r in listed] == ["golden", "golden", "fixture"]
+    assert listed[0]["synthetic"] is False
 
 
 def test_replay_stream_sends_every_recorded_event(runs):
