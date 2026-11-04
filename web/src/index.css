@@ -225,3 +225,19 @@
   4.76%, 25.71% { opacity: 1; transform: translateY(0) }
   27.62%, 100% { opacity: 0 }
 }
+
+/* The spy on the web side. He lifts his magnifying glass as each messenger that got out walks
+   past him (pass at 2.2-3.1 s, rewrite at 5.2-6.1 s). The blocked note never reaches him. */
+@keyframes moat-spy-look {
+  0%, 20.95% { transform: rotate(0) }
+  22.86%, 27.62% { transform: rotate(-35deg) }
+  29.52%, 49.52% { transform: rotate(0) }
+  51.43%, 56.19% { transform: rotate(-35deg) }
+  58.10%, 100% { transform: rotate(0) }
+}
+/* ...so after the block he's left wondering (8.3-9.8 s). */
+@keyframes moat-spy-huh {
+  0%, 79.05% { opacity: 0; transform: translate(-50%, 4px) }
+  80.95%, 91.43% { opacity: 1; transform: translate(-50%, 0) }
+  93.33%, 100% { opacity: 0 }
+}

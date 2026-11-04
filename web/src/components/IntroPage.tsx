@@ -94,6 +94,64 @@ const CAPTIONS: Record<Outcome, ReactNode> = {
   block: <><b className="text-red-800">Block.</b> This one gives away a secret. MOAT stops it, and it never leaves the company.</>,
 }
 
+// The spy: whoever is watching the public web. Drawn as a tiny pixel grid (one letter = one
+// pixel, "." = empty) so it matches the pixel art. Faces right, toward the castle.
+const SPY_PIXELS = [
+  '......HHHH......',
+  '.....HHHHHH.....',
+  '....HRRRRRRH....',
+  '...HHHHHHHHHH...',
+  '.....SSSSSS.....',
+  '.....SGGSGGS....',
+  '.....SSSSSS.....',
+  '....CCCSSCCC....',
+  '...CCCCCCCCCC...',
+  '...CCCCCCCCCCCCS',
+  '...CCCCCCCCCC...',
+  '...BBBBBBBBBB...',
+  '...CCCCDCCCCC...',
+  '...CCCCDCCCCC...',
+  '....CCCDCCCC....',
+  '.....LL..LL.....',
+  '.....LL..LL.....',
+  '....KKK..KKK....',
+]
+const SPY_COLORS: Record<string, string> = {
+  H: '#3a3f4b', R: '#8b2e2e', S: '#f2c9a0', G: '#1c2735', C: '#b08850',
+  D: '#8a6a3c', B: '#5b4325', L: '#2d3340', K: '#1c2735',
+}
+
+function Spy() {
+  return (
+    <svg viewBox="0 0 24 18" className="h-full" shapeRendering="crispEdges" aria-hidden>
+      {SPY_PIXELS.flatMap((row, y) =>
+        [...row].map((c, x) => (c === '.' ? null : <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={SPY_COLORS[c]} />)),
+      )}
+      {/* the magnifying glass turns around his hand (15.5, 9.5) to read passing notes */}
+      <g style={{ transformBox: 'view-box', transformOrigin: '15.5px 9.5px', animation: 'moat-spy-look 10.5s linear infinite' }}
+         className="motion-reduce:[animation:none]">
+        <line x1={15.5} y1={9.5} x2={18.5} y2={8} stroke="#5b4325" strokeWidth={1} />
+        <circle cx={20.5} cy={7} r={2.5} fill="#cfe8f7" fillOpacity={0.7} stroke="#1c2735" strokeWidth={0.8} />
+      </g>
+    </svg>
+  )
+}
+
+// The signpost on the web side: where every query that gets out ends up.
+function Signpost() {
+  const board = 'relative whitespace-nowrap bg-amber-700 py-0.5 pl-3 pr-1.5 font-mono text-[8px] font-bold uppercase tracking-wider text-amber-50 sm:text-[11px]'
+  const arrow = { clipPath: 'polygon(8px 0, 100% 0, 100% 100%, 8px 100%, 0 50%)' }   // points left, out to the web
+  return (
+    <div className="absolute bottom-[34%] left-[17%] h-[44%]" aria-hidden>
+      <div className="absolute bottom-0 left-1/2 h-full w-[5px] -translate-x-1/2 bg-amber-900" />
+      <div className="relative flex flex-col items-center gap-1 pt-1">
+        <span className={board} style={arrow}>Search engine</span>
+        <span className={board} style={arrow}>Public internet</span>
+      </div>
+    </div>
+  )
+}
+
 const OUTCOMES = [
   { label: 'Pass', text: 'Harmless search? Let it through.', swatch: 'bg-emerald-200 border-emerald-700' },
   { label: 'Rewrite', text: 'Too revealing? Remove the clue.', swatch: 'bg-amber-200 border-amber-700' },
@@ -132,6 +190,14 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
         <div className="absolute inset-x-0 bottom-0 h-[30%] bg-sky-600/80" />
         <div className="absolute bottom-[30%] left-[30%] h-[5%] w-[42%] bg-amber-800" />
 
+        {/* the web side (left): a signpost, and a spy reading whatever gets out */}
+        <Signpost />
+        <div className="absolute bottom-[34%] left-[2%] h-[28%]">
+          <Spy />
+          <span className="absolute -top-6 left-1/2 rounded-md border-2 border-foreground/80 bg-card px-1.5 font-mono text-sm font-bold motion-reduce:hidden sm:-top-8 sm:text-base"
+                style={{ animation: 'moat-spy-huh 10.5s linear infinite', opacity: 0 }} aria-hidden>?</span>
+        </div>
+
         {/* castle (right), guard at the gate (middle), messengers heading out to the web (left) */}
         <img src={castle} alt="" style={PIXEL} className="absolute bottom-[28%] right-[4%] h-[62%]" />
         {/* Leans from his feet (origin-bottom) while reading each note; still for reduced motion. */}
@@ -151,9 +217,6 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
           {TRIPS.map((t) => <Trip key={t.outcome} {...t} />)}
         </div>
 
-        <p className="absolute left-3 top-3 rounded border border-foreground/60 bg-card px-2 py-1 font-mono text-[10px] uppercase tracking-widest sm:text-xs">
-          ← Public web
-        </p>
         <p className="absolute right-3 top-3 rounded border border-foreground/60 bg-card px-2 py-1 font-mono text-[10px] uppercase tracking-widest sm:text-xs">
           Your company<span className="hidden sm:inline"> · private docs</span>
         </p>
