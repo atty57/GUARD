@@ -36,9 +36,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from guard import ledger, profile, tier2
+from guard import ledger, normalize, profile, tier2
 from guard.policy import Policy, SecretSpec
 from guard.quantities import Quantity, extract_quantities, family, to_canonical, unit_id
+
+# Bump when a change can alter a decision; eval/run.py records it per guarded run.
+GUARD_BEHAVIOR_VERSION = "g.v2"   # v2: Tier 0 reads encoded, relative and derived values
 
 Action = Literal["pass", "rewrite", "block"]
 BlockKind = Literal["redraftable", "unsatisfiable"]
@@ -167,6 +170,23 @@ def tier0(draft: str, policy: Policy) -> tuple[list[str], list[str], list[str]]:
                 leak_types.append(lt)
             how = {"unit_change": " in another unit", "identifier": " or an alias"}.get(lt, "")
             reasons.append(f"{s.secret_id} ({s.dim}): this query states the protected value{how}")
+    # The same value written so the plain match misses it (normalize.py): spelled out, as an
+    # offset from another number, or as something it follows from.
+    for text, kind in normalize.variants(draft):
+        qs = extract_quantities(text)
+        for s in policy.secrets:
+            if s.secret_id in touched:
+                continue
+            hit = (any(_point_hits(policy, s, qs, text)) if s.kind == "numeric" else False) \
+                or (kind == "encoding" and any(_alias_hits(s, text)))
+            if not hit:
+                continue
+            touched.append(s.secret_id)
+            if kind not in leak_types:
+                leak_types.append(kind)
+            how = {"encoding": "written another way", "relative": "as an offset from another number",
+                   "derived": "through quantities it follows from"}[kind]
+            reasons.append(f"{s.secret_id} ({s.dim}): this query states the protected value {how}")
     return leak_types, touched, reasons
 
 
