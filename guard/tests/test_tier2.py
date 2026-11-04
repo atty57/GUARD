@@ -150,3 +150,18 @@ def test_client_is_task_local(policy):
     assert asyncio.run(both()) == [("high energy density pouch cell patents", 1),
                                    ("pouch cell cathode calcination patents", 1)]
     assert not tier2.enabled()
+
+
+def test_name_block_is_rewritten_and_rechecked(policy, client):
+    # #60: a query that only names the company/product is blocked by Tier 0 and can be redrafted
+    client(('{"query": "pouch cell high-nickel cathode patents"}', "stop"))
+    r = run("Halden HX-9 pouch cell high-nickel cathode patents", policy)
+    assert r.action == "rewrite" and r.tier == 2 and r.rechecked
+    assert r.leak_types == ["identifier"] and r.query == "pouch cell high-nickel cathode patents"
+
+
+def test_rewrite_that_keeps_a_name_is_blocked(policy, client):
+    client(('{"query": "hx9 pouch cell patents"}', "stop"))        # name survives, other spelling
+    r = run("Halden HX-9 pouch cell patents", policy)
+    assert r.action == "block" and r.leak_types == ["identifier"]
+    assert r.reasons[-1] == "tier 2: no rewrite passed tiers 0-1; block kept"
