@@ -21,6 +21,10 @@ app = FastAPI(title="GUARD API")
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "runs" / "fixtures"
 # Every live run is saved here as it streams, so it can be replayed later (e.g. for the video).
 LIVE_DIR = Path(__file__).resolve().parent.parent / "runs" / "live"
+# Golden recordings: the prepared demo runs for the video (Atharva, A8 #14). They may land in
+# runs/golden/ or as runs/golden_*.jsonl (PLAN.md), so both places are read.
+RUNS_DIR = Path(__file__).resolve().parent.parent / "runs"
+GOLDEN_DIR = RUNS_DIR / "golden"
 # The disclosure policy (Hyeseong's guard/policy.py reads the same file).
 POLICY_PATH = Path(__file__).resolve().parent.parent / "data" / "policy.example.yaml"
 # Recorded model answers, so a live run works with no API key (LLM_MODE=replay, the default).
@@ -95,16 +99,21 @@ def lanes_in(path: Path) -> list[str]:
     return lanes
 
 
-def replayable() -> dict[str, tuple[Path, bool]]:
-    """Every run that can be replayed: name -> (file, synthetic?).
+def replayable() -> dict[str, tuple[Path, str]]:
+    """Every run that can be replayed: name -> (file, kind), in the order the picker shows them.
 
-    runs/fixtures/ is hand-written test data (synthetic). runs/live/ holds recordings of real
-    agent runs (not synthetic). Only finished recordings end in .jsonl; a run still streaming,
-    or one that was cut off, is a .jsonl.part file and is left out.
+    kind is "golden" (prepared demo runs, listed first since they're the ones for the video),
+    "fixture" (hand-written test data in runs/fixtures/) or "live" (real runs saved by Run live,
+    newest first). Only finished recordings end in .jsonl; a .jsonl.part file is left out.
+    Golden names start with "golden_", so they can't clash with a fixture's name.
     """
-    runs = {p.stem: (p, True) for p in sorted(FIXTURES_DIR.glob("*.jsonl"))}
-    # Newest live run first.
-    runs.update({p.stem: (p, False) for p in sorted(LIVE_DIR.glob("*.jsonl"), reverse=True)})
+    runs: dict[str, tuple[Path, str]] = {}
+    for p in sorted(GOLDEN_DIR.glob("*.jsonl")):
+        runs[p.stem if p.stem.startswith("golden_") else f"golden_{p.stem}"] = (p, "golden")
+    for p in sorted(RUNS_DIR.glob("golden_*.jsonl")):
+        runs.setdefault(p.stem, (p, "golden"))
+    runs.update({p.stem: (p, "fixture") for p in sorted(FIXTURES_DIR.glob("*.jsonl"))})
+    runs.update({p.stem: (p, "live") for p in sorted(LIVE_DIR.glob("*.jsonl"), reverse=True)})
     return runs
 
 
@@ -118,11 +127,13 @@ def recorded_at(path: Path) -> str | None:
 @app.get("/api/replay")
 def list_replays():
     """Recorded runs the UI can replay, with their lanes, so the UI can lay out columns
-    before the stream starts. `synthetic` tells the UI whether to label it as test data;
-    `recorded_at` (real recordings only) lets it say when the run actually happened."""
-    return {"runs": [{"name": name, "lanes": lanes_in(path), "synthetic": synthetic,
-                      "recorded_at": None if synthetic else recorded_at(path)}
-                     for name, (path, synthetic) in replayable().items()]}
+    before the stream starts. `kind` (golden / fixture / live) tells the UI how to label it;
+    `synthetic` (= a hand-written fixture) is kept for older clients. `recorded_at` (real
+    recordings only) lets it say when the run actually happened."""
+    return {"runs": [{"name": name, "lanes": lanes_in(path), "kind": kind,
+                      "synthetic": kind == "fixture",
+                      "recorded_at": None if kind == "fixture" else recorded_at(path)}
+                     for name, (path, kind) in replayable().items()]}
 
 
 @app.get("/api/replay/{name}/stream")
