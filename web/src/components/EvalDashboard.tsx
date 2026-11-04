@@ -118,7 +118,7 @@ function SettingSwitch({ value, onChange }: { value: Setting; onChange: (s: Sett
       <span className="text-muted-foreground">
         {value === 'labeled'
           ? 'Company docs are marked CONFIDENTIAL.'
-          : 'Same docs without the CONFIDENTIAL marking, so the agent can\'t rely on it.'}
+          : 'Same docs without the CONFIDENTIAL marking, so the agent can\'t take its cue from the label.'}
       </span>
     </div>
   )
