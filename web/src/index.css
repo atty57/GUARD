@@ -218,14 +218,6 @@
   15.43%, 100% { opacity: 1 }
 }
 
-/* The caption under the scene: each line shows while its messenger makes the trip
-   (0.3 s to 2.9 s after they set off), so the words always match the picture. */
-@keyframes moat-caption {
-  0%, 2.86% { opacity: 0; transform: translateY(4px) }
-  4.76%, 25.71% { opacity: 1; transform: translateY(0) }
-  27.62%, 100% { opacity: 0 }
-}
-
 /* The spy on the web side. He lifts his magnifying glass as each messenger that got out walks
    past him (pass at 2.2-3.1 s, rewrite at 5.2-6.1 s). The blocked note never reaches him. */
 @keyframes moat-spy-look {

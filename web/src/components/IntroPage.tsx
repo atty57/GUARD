@@ -1,6 +1,6 @@
 // The intro screen ("01"): what MOAT is, in one picture.
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef } from 'react'
 import castle from '@/assets/castle.png'
 import guard from '@/assets/guard.png'
 import messenger from '@/assets/messenger.png'
@@ -87,13 +87,6 @@ function Trip({ outcome, delay, path, bubble, color }: (typeof TRIPS)[number]) {
   )
 }
 
-// The line under the scene that explains each trip while it happens (moat-caption in index.css).
-const CAPTIONS: Record<Outcome, ReactNode> = {
-  pass: <><b className="text-emerald-800">Pass.</b> A harmless search: nothing private in it, so it goes out to the web.</>,
-  rewrite: <><b className="text-amber-800">Rewrite.</b> This search reveals an internal number. MOAT removes it and sends a safer version.</>,
-  block: <><b className="text-red-800">Block.</b> This one gives away a secret. MOAT stops it, and it never leaves the company.</>,
-}
-
 // The spy: whoever is watching the public web. Drawn as a tiny pixel grid (one letter = one
 // pixel, "." = empty) so it matches the pixel art. Faces right, toward the castle.
 const SPY_PIXELS = [
@@ -177,7 +170,7 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
         text="Your AI research agent reads company documents and searches the web. One query looks innocent; many together can give the company's secrets away. MOAT checks every search before it leaves."
       />
 
-      {/* The scene and its caption share one wrapper (ref), so they restart together and stay in sync. */}
+      {/* Wrapper for the scene (ref), so every animation inside restarts together and stays in sync. */}
       <div ref={scene} className="flex flex-col gap-3">
       {/* The scene. Positions are in % of the box, so it scales with the screen width. */}
       <div
@@ -222,16 +215,6 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
         </p>
       </div>
 
-      {/* One caption per trip, stacked in the same spot; each fades in while its messenger is out.
-          Taller on small screens where the sentence wraps. Hidden when animations are off. */}
-      <div className="relative h-12 motion-reduce:hidden sm:h-6" aria-hidden>
-        {TRIPS.map((t) => (
-          <p key={t.outcome} className="absolute inset-0 text-center text-sm"
-             style={{ animation: `moat-caption 10.5s linear ${t.delay}s infinite both`, opacity: 0 }}>
-            {CAPTIONS[t.outcome]}
-          </p>
-        ))}
-      </div>
       </div>
 
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-3">
