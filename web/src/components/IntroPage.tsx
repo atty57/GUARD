@@ -1,6 +1,6 @@
 // The intro screen ("01"): what MOAT is, in one picture.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import castle from '@/assets/castle.png'
 import guard from '@/assets/guard.png'
 import messenger from '@/assets/messenger.png'
@@ -25,57 +25,55 @@ function Messenger({ frame = 0, faceRight = false }: { frame?: 0 | 1; faceRight?
   )
 }
 
-// The three trips in the loop: one per outcome, 3 s apart, then a 1.5 s pause (moat-* keyframes in index.css).
-const TRIPS = [
-  { outcome: 'pass', delay: 0, path: 'moat-out', bubble: '✓ pass', color: 'bg-emerald-200 border-emerald-700 text-emerald-900' },
-  { outcome: 'rewrite', delay: 3, path: 'moat-out', bubble: '✎ rewritten', color: 'bg-amber-200 border-amber-700 text-amber-900' },
-  { outcome: 'block', delay: 6, path: 'moat-back', bubble: '✕ blocked', color: 'bg-red-200 border-red-700 text-red-900' },
-] as const
+// The loop runs on one 13 s clock (moat-* keyframes in index.css): scene 1 MOAT off, scene 2 MOAT on.
+const LOOP = '13s linear infinite'
 
-// One messenger's trip: the outer box moves along the bridge, the inner one flips to face the
-// castle on a block, the sprite itself flips between its two walk frames.
-// The rewrite moment: a little note above the messenger where the secret part gets crossed out
-// and replaced, a tiny version of the word diff on the Compare screen. Runs on the same timing
-// as its messenger's trip, so it shows exactly while they wait at the guard.
-function RewriteNote({ timing }: { timing: string }) {
+// A note above a messenger: the search query they carry. On phones there's no room above, so it
+// sits below them (over the moat) and drops the words that don't change.
+const NOTE = 'absolute top-[105%] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border-2 border-foreground/80 bg-[#fffdf8] px-1 py-0.5 font-mono text-[9px] shadow-[2px_2px_0_0] shadow-foreground/70 sm:-top-24 sm:px-2 sm:py-1 sm:text-xs'
+const Extra = ({ children }: { children: string }) => <span className="hidden sm:inline">{children}</span>
+
+// The real Tier 2 rewrite from #61, shortened: "pouch cell 272 Wh/kg patents" -> "pouch cell high energy density patents".
+function OffNote() {
   return (
-    <span
-      className="absolute top-[105%] left-1/2 whitespace-nowrap rounded-md border-2 border-foreground/80 bg-[#fffdf8] px-1 py-0.5 font-mono text-[9px] sm:-top-24 sm:px-2 sm:py-1 sm:text-xs shadow-[2px_2px_0_0] shadow-foreground/70"
-      style={{ animation: `moat-note ${timing}`, opacity: 0 }}
-    >
-      <span className="hidden sm:inline">energy density </span>
-      <span className="relative text-red-700">
-        <span className="hidden sm:inline">above </span>360 Wh/kg
-        {/* the strike line grows from left to right */}
-        <span className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-red-700" style={{ animation: `moat-strike ${timing}` }} />
-      </span>{' '}
-      <span className="font-semibold text-emerald-700" style={{ animation: `moat-fix ${timing}`, opacity: 0 }}>characteristics</span>
+    <span className={NOTE} style={{ animation: `moat-off-note ${LOOP}`, opacity: 0 }}>
+      <Extra>pouch cell </Extra><span className="font-semibold text-red-700">272 Wh/kg</span><Extra> patents</Extra>
     </span>
   )
 }
 
-function Trip({ outcome, delay, path, bubble, color }: (typeof TRIPS)[number]) {
-  const timing = `10.5s linear ${delay}s infinite both`   // same length as the whole loop
+function OnNote() {
   return (
-    <div className="absolute bottom-[34%] h-[28%] aspect-square" style={{ animation: `${path} ${timing}`, opacity: 0 }}>
-      {outcome === 'rewrite' && <RewriteNote timing={timing} />}
-      <span
-        className={`absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border-2 px-1 py-0.5 font-mono text-[10px] font-bold sm:-top-10 sm:px-2 sm:py-1 sm:text-sm shadow-[2px_2px_0_0] shadow-foreground/70 ${color}`}
-        style={{ animation: `moat-bubble ${timing}`, opacity: 0 }}
-      >
-        {bubble}
-      </span>
-      <div className="h-full" style={{ animation: path === 'moat-back' ? `moat-turn ${timing}` : undefined, transform: 'scaleX(-1)' }}>
-        <div
-          aria-hidden
-          className="aspect-square h-full"
-          style={{ ...PIXEL, backgroundImage: `url(${messenger})`, backgroundSize: '200% 100%',
-                   animation: 'moat-walk 0.4s steps(1) infinite' }}
-        />
+    <span className={NOTE} style={{ animation: `moat-on-note ${LOOP}`, opacity: 0 }}>
+      <Extra>pouch cell </Extra>
+      <span className="relative text-red-700">
+        272 Wh/kg
+        {/* the strike line grows from left to right */}
+        <span className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-red-700" style={{ animation: `moat-strike ${LOOP}` }} />
+      </span>{' '}
+      <span className="font-semibold text-emerald-700" style={{ animation: `moat-fix ${LOOP}`, opacity: 0 }}>high energy density</span>
+      <Extra> patents</Extra>
+    </span>
+  )
+}
+
+// One walking messenger: the outer box moves along the bridge (path), the sprite flips between
+// its two walk frames. Faces left, out toward the web.
+function Walker({ path, children }: { path: string; children: ReactNode }) {
+  return (
+    <div className="absolute bottom-[34%] h-[28%] aspect-square" style={{ animation: `${path} ${LOOP}`, opacity: 0 }}>
+      {children}
+      <div className="h-full" style={{ transform: 'scaleX(-1)' }}>
+        <div aria-hidden className="aspect-square h-full"
+             style={{ ...PIXEL, backgroundImage: `url(${messenger})`, backgroundSize: '200% 100%',
+                      animation: 'moat-walk 0.4s steps(1) infinite' }} />
       </div>
     </div>
   )
 }
+
+// Small pop-up label (the guard's verdict, the spy's reaction).
+const BUBBLE = 'absolute whitespace-nowrap rounded-md border-2 px-1 py-0.5 font-mono text-[10px] font-bold shadow-[2px_2px_0_0] shadow-foreground/70 sm:px-2 sm:py-1 sm:text-sm'
 
 // The spy: whoever is watching the public web. Drawn as a tiny pixel grid (one letter = one
 // pixel, "." = empty) so it matches the pixel art. Faces right, toward the castle.
@@ -111,7 +109,7 @@ function Spy() {
         [...row].map((c, x) => (c === '.' ? null : <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={SPY_COLORS[c]} />)),
       )}
       {/* the magnifying glass turns around his hand (15.5, 9.5) to read passing notes */}
-      <g style={{ transformBox: 'view-box', transformOrigin: '15.5px 9.5px', animation: 'moat-spy-look 10.5s linear infinite' }}
+      <g style={{ transformBox: 'view-box', transformOrigin: '15.5px 9.5px', animation: `moat-spy-look ${LOOP}` }}
          className="motion-reduce:[animation:none]">
         <line x1={15.5} y1={9.5} x2={18.5} y2={8} stroke="#5b4325" strokeWidth={1} />
         <circle cx={20.5} cy={7} r={2.5} fill="#cfe8f7" fillOpacity={0.7} stroke="#1c2735" strokeWidth={0.8} />
@@ -125,7 +123,7 @@ function Signpost() {
   const board = 'relative whitespace-nowrap bg-amber-700 py-0.5 pl-3 pr-1.5 font-mono text-[8px] font-bold uppercase tracking-wider text-amber-50 sm:text-[11px]'
   const arrow = { clipPath: 'polygon(8px 0, 100% 0, 100% 100%, 8px 100%, 0 50%)' }   // points left, out to the web
   return (
-    <div className="absolute bottom-[34%] left-[17%] h-[44%]" aria-hidden>
+    <div className="absolute bottom-[34%] left-[23%] h-[44%]" aria-hidden>
       <div className="absolute bottom-0 left-1/2 h-full w-[5px] -translate-x-1/2 bg-amber-900" />
       <div className="relative flex flex-col items-center gap-1 pt-1">
         <span className={board} style={arrow}>Search engine</span>
@@ -183,7 +181,7 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
       {/* The scene. Positions are in % of the box, so it scales with the screen width. */}
       <div
         role="img"
-        aria-label="A castle with a moat. Messengers carry search queries out across the drawbridge, where a guard checks each one."
+        aria-label="Two scenes. Without MOAT, a search with a secret number walks out of the castle and a spy reads the number. With MOAT, a guard rewrites the same search so the spy learns nothing."
         className="relative aspect-[16/7] w-full overflow-hidden rounded-xl border-2 border-foreground/80 bg-sky-100 shadow-[6px_6px_0_0] shadow-foreground/80"
       >
         {/* ground, moat, bridge */}
@@ -196,19 +194,21 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
         <Signpost />
         <div className="absolute bottom-[34%] left-[2%] h-[28%]">
           <Spy />
-          <span className="absolute -top-6 left-1/2 rounded-md border-2 border-foreground/80 bg-card px-1.5 font-mono text-sm font-bold motion-reduce:hidden sm:-top-8 sm:text-base"
-                style={{ animation: 'moat-spy-huh 10.5s linear infinite', opacity: 0 }} aria-hidden>?</span>
+          {/* scene 1: he got the number. scene 2: he got nothing useful. */}
+          <span className={`${BUBBLE} z-10 -top-5 left-[10%] border-red-700 bg-red-200 text-red-900 motion-reduce:hidden sm:-top-9`}
+                style={{ animation: `moat-spy-got ${LOOP}`, opacity: 0 }} aria-hidden><Extra>the secret: </Extra>272 Wh/kg!</span>
+          <span className={`${BUBBLE} z-10 -top-5 left-[30%] border-foreground/80 bg-card motion-reduce:hidden sm:-top-9`}
+                style={{ animation: `moat-spy-huh ${LOOP}`, opacity: 0 }} aria-hidden>?<Extra> nothing useful</Extra></span>
         </div>
 
         {/* castle (right), guard at the gate (middle), messengers heading out to the web (left) */}
         <img src={castle} alt="" style={PIXEL} className="absolute bottom-[28%] right-[1.5%] h-[62%]" />
-        {/* Leans from his feet (origin-bottom) while reading each note; still for reduced motion. */}
-        {/* Two movements, one on each layer so they don't override each other:
-            the wrapper turns him around on a block (moat-stop), the image leans while he reads
-            every note (moat-check). Both run on the same 10.5 s loop as the messengers. Both stay still for reduced motion. */}
-        <div className="absolute bottom-[34%] left-[48%] h-[28%] motion-safe:animate-[moat-stop_10.5s_linear_infinite]">
+        {/* Two movements, one on each layer so they don't override each other: the wrapper fades
+            him out in scene 1 (MOAT off), the image leans from his feet while he reads the note.
+            Both stay still (and he stays visible) for reduced motion. */}
+        <div className="absolute bottom-[34%] left-[48%] h-[28%] motion-safe:animate-[moat-guard_13s_linear_infinite]">
           <img src={guard} alt="" style={PIXEL}
-               className="h-full origin-bottom motion-safe:animate-[moat-check_10.5s_linear_infinite]" />
+               className="h-full origin-bottom motion-safe:animate-[moat-check_13s_linear_infinite]" />
         </div>
         {/* Still picture for people who turn off animations (motion-reduce), the loop for everyone else. */}
         <div className="motion-safe:hidden">
@@ -216,9 +216,18 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
           <div className="absolute bottom-[38%] left-[10%] h-[28%]"><Messenger frame={1} /></div>
         </div>
         <div className="motion-reduce:hidden">
-          {TRIPS.map((t) => <Trip key={t.outcome} {...t} />)}
+          <Walker path="moat-off-walk"><OffNote /></Walker>
+          <Walker path="moat-on-walk">
+            <OnNote />
+            <span className={`${BUBBLE} -top-6 left-1/2 -translate-x-1/2 border-amber-700 bg-amber-200 text-amber-900 sm:-top-10`}
+                  style={{ animation: `moat-bubble ${LOOP}`, opacity: 0 }}>✎ rewritten</span>
+          </Walker>
         </div>
 
+        <div className="absolute left-3 top-3 font-mono text-[10px] font-bold uppercase tracking-widest motion-reduce:hidden sm:text-xs">
+          <span className="absolute whitespace-nowrap rounded border-2 border-red-700 bg-red-200 px-2 py-1 text-red-900" style={{ animation: `moat-tag-off ${LOOP}` }}>MOAT off<span style={{ animation: `moat-tag-leaked ${LOOP}`, maxWidth: 0, opacity: 0 }} className="hidden overflow-hidden whitespace-nowrap align-bottom sm:inline-block"> · secret leaked</span></span>
+          <span className="absolute whitespace-nowrap rounded border-2 border-emerald-700 bg-emerald-200 px-2 py-1 text-emerald-900" style={{ animation: `moat-tag-on ${LOOP}`, opacity: 0 }}>MOAT on<span style={{ animation: `moat-tag-kept ${LOOP}`, maxWidth: 0, opacity: 0 }} className="hidden overflow-hidden whitespace-nowrap align-bottom sm:inline-block"> · secret kept</span></span>
+        </div>
         <p className="absolute right-3 top-3 rounded border border-foreground/60 bg-card px-2 py-1 font-mono text-[10px] uppercase tracking-widest sm:text-xs">
           Your company<span className="hidden sm:inline"> · private docs</span>
         </p>

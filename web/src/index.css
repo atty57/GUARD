@@ -144,95 +144,116 @@
    Positions are "left" in % of the scene, so the loop scales with the screen. */
 @keyframes moat-walk { 0% { background-position: 0% 0 } 50% { background-position: 100% 0 } }  /* 2 walk frames */
 
-@keyframes moat-out {             /* pass and rewrite: gate -> guard -> off to the web */
-  0%     { left: 70%; opacity: 0 }
-  3.81%  { left: 68%; opacity: 1 }          /* 0.4 s: steps out of the gate */
-  10.29% { left: 59% }                     /* 1.08 s: reaches the guard */
-  17.14% { left: 59% }                     /* 1.8 s: the guard has checked the note */
-  38.10% { left: -12%; opacity: 1 }        /* 4.0 s: a calm walk past the spy, off to the web */
-  38.86%, 100% { left: -12%; opacity: 0 }
+/* Intro loop, 13 s, two scenes (times below are seconds into the loop).
+   Scene 1, MOAT off (0-6 s): no guard. A messenger walks straight out with the secret and the
+   spy reads it. Scene 2, MOAT on (6-13 s): the guard is back, stops the same query, rewrites
+   it, and the spy gets nothing useful. Everything uses the same 13 s clock with no delays,
+   so the pieces can't drift apart. */
+/* scene 1: gate -> straight past the empty gate post -> past the spy, no stop */
+@keyframes moat-off-walk {
+  0% { left: 70%; opacity: 0 }
+  3.08% { left: 68%; opacity: 1 }
+  27.69% { left: -12%; opacity: 1 }
+  28.46%, 100% { left: -12%; opacity: 0 }
 }
-@keyframes moat-back {            /* block: gate -> guard -> back into the castle */
-  0%     { left: 70%; opacity: 0 }
-  3.81%  { left: 68%; opacity: 1 }
-  10.29% { left: 59% }
-  17.14% { left: 59% }
-  24.76% { left: 70%; opacity: 1 }          /* 2.6 s: back at the gate */
-  28.29%, 100% { left: 72%; opacity: 0 }   /* fades out going inside */
+/* scene 2: gate -> waits at the guard while he rewrites the note -> past the spy */
+@keyframes moat-on-walk {
+  0%, 50.77% { left: 70%; opacity: 0 }
+  53.85% { left: 68%; opacity: 1 }
+  59.08% { left: 59% }
+  69.23% { left: 59% }
+  91.08% { left: -12%; opacity: 1 }
+  91.85%, 100% { left: -12%; opacity: 0 }
 }
-@keyframes moat-turn {            /* faces left (out) until the guard says no, then faces the castle */
-  0%, 17.14% { transform: scaleX(-1) }
-  17.24%, 100% { transform: scaleX(1) }
+/* scene 1 note: visible the whole walk, so you can read the secret going out */
+@keyframes moat-off-note {
+  0%, 3.85% { opacity: 0 }
+  5.38%, 22.31% { opacity: 1 }
+  23.85%, 100% { opacity: 0 }
 }
-@keyframes moat-bubble {          /* the guard's verdict pops up while the messenger waits */
-  0%, 10.29% { opacity: 0; transform: translateY(4px) }
-  11.14%, 18.86% { opacity: 1; transform: translateY(0) }
-  20.57%, 100% { opacity: 0 }
+/* scene 2 note: from the gate until the spy has read it */
+@keyframes moat-on-note {
+  0%, 54.62% { opacity: 0 }
+  56.15%, 83.85% { opacity: 1 }
+  85.38%, 100% { opacity: 0 }
 }
-
-/* The guard checks each note: leans toward the messenger and bobs twice, like reading, while
-   each one waits (1.02 s to 1.8 s after it sets off: at 1 s, 4 s and 7 s of the loop). */
-@keyframes moat-check {
-  0% { transform: rotate(0) translateY(0) }
-  9.71% { transform: rotate(0) translateY(0) }
-  11.43% { transform: rotate(5deg) translateY(-6%) }
-  13.14% { transform: rotate(5deg) translateY(0) }
-  14.86% { transform: rotate(5deg) translateY(-6%) }
-  17.14% { transform: rotate(0) translateY(0) }
-  38.29% { transform: rotate(0) translateY(0) }
-  40.00% { transform: rotate(5deg) translateY(-6%) }
-  41.71% { transform: rotate(5deg) translateY(0) }
-  43.43% { transform: rotate(5deg) translateY(-6%) }
-  45.71% { transform: rotate(0) translateY(0) }
-  66.86% { transform: rotate(0) translateY(0) }
-  68.57% { transform: rotate(5deg) translateY(-6%) }
-  70.29% { transform: rotate(5deg) translateY(0) }
-  72.00% { transform: rotate(5deg) translateY(-6%) }
-  74.29% { transform: rotate(0) translateY(0) }
-  100% { transform: rotate(0) translateY(0) }
-}
-
-/* On a block, the guard turns to face the messenger (sword first), as if stopping them:
-   7.0 s to 8.3 s, while the blocked messenger waits and turns back. */
-@keyframes moat-stop {
-  0%, 66.67%    { transform: scaleX(1) }
-  66.76%, 79.05% { transform: scaleX(-1) }
-  79.14%, 100% { transform: scaleX(1) }
-}
-
-/* The spy on the web side. He lifts his magnifying glass as each messenger that got out walks
-   past him (pass at 2.9-4.0 s, rewrite at 5.9-7.0 s). The blocked note never reaches him. */
-@keyframes moat-spy-look {
-  0%, 27.62% { transform: rotate(0) }
-  29.52%, 36.19% { transform: rotate(-35deg) }
-  38.10%, 56.19% { transform: rotate(0) }
-  58.10%, 64.76% { transform: rotate(-35deg) }
-  66.67%, 100% { transform: rotate(0) }
-}
-/* ...so after the block he's left wondering (8.3-9.8 s). */
-@keyframes moat-spy-huh {
-  0%, 79.05% { opacity: 0; transform: translate(-50%, 4px) }
-  80.95%, 91.43% { opacity: 1; transform: translate(-50%, 0) }
-  93.33%, 100% { opacity: 0 }
-}
-
-/* Rewrite only: the note pops up while the messenger waits, the secret part is crossed out, then
-   the safe words appear (same words as the "compare run" example on the Compare screen).
-   Times are after this messenger sets off: card 1.08 s to 2.3 s, strike 1.25 s to 1.5 s,
-   new words from 1.5 s. */
-@keyframes moat-note {
-  0%, 10.29% { opacity: 0; transform: translate(-50%, 6px) scale(0.95) }
-  11.43%, 20.48% { opacity: 1; transform: translate(-50%, 0) scale(1) }
-  21.90%, 100% { opacity: 0; transform: translate(-50%, 0) scale(1) }
-}
+/* the secret gets crossed out while the guard reads... */
 @keyframes moat-strike {
-  0%, 11.90% { width: 0 }
-  14.29%, 100% { width: 100% }
+  0%, 60.77% { width: 0 }
+  63.08%, 100% { width: 100% }
 }
+/* ...and the safe words appear */
 @keyframes moat-fix {
-  0%, 14.29% { opacity: 0 }
-  15.43%, 100% { opacity: 1 }
+  0%, 63.08% { opacity: 0 }
+  64.23%, 100% { opacity: 1 }
+}
+/* the guard's verdict above the waiting messenger */
+@keyframes moat-bubble {
+  0%, 59.08% { opacity: 0; transform: translateY(4px) }
+  60.00%, 69.23% { opacity: 1; transform: translateY(0) }
+  70.77%, 100% { opacity: 0 }
+}
+/* the guard is only there when MOAT is on */
+@keyframes moat-guard {
+  0%, 46.15% { opacity: 0 }
+  49.23%, 96.92% { opacity: 1 }
+  100% { opacity: 0 }
+}
+/* he leans toward the messenger and bobs while reading the note */
+@keyframes moat-check {
+  0%, 58.46% { transform: rotate(0) translateY(0) }
+  60.00% { transform: rotate(5deg) translateY(-6%) }
+  61.54% { transform: rotate(5deg) translateY(0) }
+  63.08% { transform: rotate(5deg) translateY(-6%) }
+  64.62% { transform: rotate(5deg) translateY(0) }
+  66.15% { transform: rotate(5deg) translateY(-6%) }
+  69.23%, 100% { transform: rotate(0) translateY(0) }
+}
+/* the spy lifts his glass as each messenger walks past */
+@keyframes moat-spy-look {
+  0%, 18.46% { transform: rotate(0) }
+  20.00%, 25.38% { transform: rotate(-35deg) }
+  26.92%, 80.00% { transform: rotate(0) }
+  81.54%, 87.69% { transform: rotate(-35deg) }
+  89.23%, 100% { transform: rotate(0) }
+}
+/* scene 1: he got the number */
+@keyframes moat-spy-got {
+  0%, 22.31% { opacity: 0; transform: translateY(4px) }
+  23.85%, 41.54% { opacity: 1; transform: translateY(0) }
+  43.08%, 100% { opacity: 0 }
+}
+/* scene 2: nothing useful, so he's left wondering */
+@keyframes moat-spy-huh {
+  0%, 86.92% { opacity: 0; transform: translateY(4px) }
+  88.46%, 96.92% { opacity: 1; transform: translateY(0) }
+  98.46%, 100% { opacity: 0 }
+}
+/* MOAT OFF / MOAT ON tag in the corner */
+@keyframes moat-tag-off {
+  0%, 44.62% { opacity: 1 }
+  46.15%, 98.46% { opacity: 0 }
+  100% { opacity: 1 }
+}
+@keyframes moat-tag-on {
+  0%, 44.62% { opacity: 0 }
+  46.15%, 98.46% { opacity: 1 }
+  100% { opacity: 0 }
 }
 
-/* Sky: slow, separate from the 10.5 s story loop, so they never need syncing. */
+/* The outcome added to the corner tag once the spy has reacted: "secret leaked" in scene 1
+   (3.1-5.8 s), "secret kept" in scene 2 (11.5-12.8 s). It grows from zero width, so the tag
+   only gets longer when there's something to add. */
+@keyframes moat-tag-leaked {
+  0%, 23.08% { max-width: 0; opacity: 0 }
+  25.38%, 44.62% { max-width: 20ch; opacity: 1 }
+  46.15%, 100% { max-width: 0; opacity: 0 }
+}
+@keyframes moat-tag-kept {
+  0%, 87.69% { max-width: 0; opacity: 0 }
+  90.00%, 98.46% { max-width: 20ch; opacity: 1 }
+  100% { max-width: 0; opacity: 0 }
+}
+
+/* Sky: slow, separate from the 13 s story loop, so they never need syncing. */
 @keyframes moat-drift { from { left: -14% } to { left: 104% } }          /* a cloud crossing the sky */
