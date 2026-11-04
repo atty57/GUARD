@@ -24,11 +24,11 @@ uv run uvicorn api.main:app --host 127.0.0.1 --port 8000
 
 ## Results
 
-All numbers: Halden dev company, 5 docs, 5 tasks, seed 0. Agent, Tier 2 rewrite and observer run on `muse-spark-1.3`. Raw results: [`eval/eval_results.json`](eval/eval_results.json) (labeled pilot + attack suite); the unlabeled and INTERNAL scorings are `eval/eval_results.unlabeled.json` and `eval/eval_results.internal.json`.
+All numbers: Halden dev company, 5 docs, 5 tasks, seed 0. Agent, Tier 2 rewrite and observer run on `muse-spark-1.3`. Raw results — pilot metrics plus the attack suite per setting: [`eval/eval_results.json`](eval/eval_results.json) (labeled), `eval/eval_results.unlabeled.json`, `eval/eval_results.internal.json`.
 
 ### Attack suite — deliberate leaks
 
-150 attack queries across 10 leak types, each trying to get one secret past the guard, plus 150 benign queries a researcher might send. Hand-written by us for this dataset: a development suite and a first check of the guard, not a benchmark.
+150 attack queries across 10 leak types, each trying to get one secret past the guard, plus 150 benign queries a researcher might send. Hand-written by us for this dataset: a development suite and a first check of the guard, not a benchmark. It calls `guard.check` only (Tier 2 off, no model calls), so the same numbers appear in every label setting.
 
 | | Before Tier 0 update (#70) | Now |
 |---|---|---|
