@@ -16,7 +16,7 @@ Threat model: the **search provider is the adversary** and sees only the queries
 | Role | Person | Owns |
 |---|---|---|
 | AI Agent Engineer | Atharva | Agent graph, model client, patent corpus + search, data generation, experiment runner |
-| Team Lead · Security & Evaluation Lead | Hyeseong | Originated MOAT (problem framing, concept, core design, evaluation plan); threat model, `guard.check()` (Tiers 0–2), disclosure ledger, data spec, attack suite, evaluation harness (observer + scoring) |
+| Team Lead · Security & Evaluation Lead | Hyeseong | Originated MOAT (ideation, problem framing, core design, evaluation plan); guard Tiers 0–2 + disclosure ledger, threat model, attack suite, evaluation harness |
 | Full-Stack Engineer | Sebika | FastAPI + SSE backend, React app, replay UI |
 
 ## Layout
