@@ -25,7 +25,7 @@ function Messenger({ frame = 0, faceRight = false }: { frame?: 0 | 1; faceRight?
   )
 }
 
-// The three trips in the loop: one per outcome, 3 s apart (see the moat-* keyframes in index.css).
+// The three trips in the loop: one per outcome, 3 s apart, then a 1.5 s pause (moat-* keyframes in index.css).
 const TRIPS = [
   { outcome: 'pass', delay: 0, path: 'moat-out', bubble: '✓ pass', color: 'bg-emerald-200 border-emerald-700 text-emerald-900' },
   { outcome: 'rewrite', delay: 3, path: 'moat-out', bubble: '✎ rewritten', color: 'bg-amber-200 border-amber-700 text-amber-900' },
@@ -35,7 +35,7 @@ const TRIPS = [
 // One messenger's trip: the outer box moves along the bridge, the inner one flips to face the
 // castle on a block, the sprite itself flips between its two walk frames.
 function Trip({ delay, path, bubble, color }: (typeof TRIPS)[number]) {
-  const timing = `9s linear ${delay}s infinite both`
+  const timing = `10.5s linear ${delay}s infinite both`   // same length as the whole loop
   return (
     <div className="absolute bottom-[34%] h-[28%] aspect-square" style={{ animation: `${path} ${timing}`, opacity: 0 }}>
       <span
@@ -97,11 +97,11 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
         <img src={castle} alt="" style={PIXEL} className="absolute bottom-[28%] right-[4%] h-[62%]" />
         {/* Leans from his feet (origin-bottom) while reading each note; still for reduced motion. */}
         {/* Two movements, one on each layer so they don't override each other:
-            the wrapper turns him around on a block (moat-stop, 9 s), the image leans while he reads
-            every note (moat-check, 3 s). Both stay still for reduced motion. */}
-        <div className="absolute bottom-[34%] left-[48%] h-[28%] motion-safe:animate-[moat-stop_9s_linear_infinite]">
+            the wrapper turns him around on a block (moat-stop), the image leans while he reads
+            every note (moat-check). Both run on the same 10.5 s loop as the messengers. Both stay still for reduced motion. */}
+        <div className="absolute bottom-[34%] left-[48%] h-[28%] motion-safe:animate-[moat-stop_10.5s_linear_infinite]">
           <img src={guard} alt="" style={PIXEL}
-               className="h-full origin-bottom motion-safe:animate-[moat-check_3s_ease-in-out_infinite]" />
+               className="h-full origin-bottom motion-safe:animate-[moat-check_10.5s_linear_infinite]" />
         </div>
         {/* Still picture for people who turn off animations (motion-reduce), the loop for everyone else. */}
         <div className="motion-safe:hidden">

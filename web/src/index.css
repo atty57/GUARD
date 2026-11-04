@@ -134,56 +134,68 @@
     }
 }
 /* ---------- Intro scene animation (IntroPage.tsx) ----------
-   A 9 s loop, three messengers, one at a time (delays 0 s, 3 s, 6 s). Each one comes out of the
-   castle gate, stops at the guard, then:
+   A 10.5 s loop: three messengers, one at a time (they start at 0 s, 3 s and 6 s), then a 1.5 s
+   pause with only the castle and guard, so the next loop doesn't start the moment the last
+   messenger goes back inside. Each messenger comes out of the castle gate, stops at the guard, then:
      pass    -> walks on, out to the web
      rewrite -> the note changes, walks on
      block   -> turns around, walks back into the castle
+   The %s below were computed from times in seconds (time / 10.5 s); the comments give the seconds.
    Positions are "left" in % of the scene, so the loop scales with the screen. */
 @keyframes moat-walk { 0% { background-position: 0% 0 } 50% { background-position: 100% 0 } }  /* 2 walk frames */
 
 @keyframes moat-out {             /* pass and rewrite: gate -> guard -> off to the web */
-  0%   { left: 70%; opacity: 0 }
-  2%   { opacity: 1 }
-  12%  { left: 59% }
-  20%  { left: 59% }              /* the guard checks the note (just right of the guard) */
-  32%  { left: -12%; opacity: 1 }
-  33%, 100% { left: -12%; opacity: 0 }
+  0%     { left: 70%; opacity: 0 }
+  3.81%  { left: 68%; opacity: 1 }          /* 0.4 s: steps out of the gate */
+  10.29% { left: 59% }                     /* 1.08 s: reaches the guard */
+  17.14% { left: 59% }                     /* 1.8 s: the guard has checked the note */
+  27.43% { left: -12%; opacity: 1 }        /* 2.88 s: off to the web */
+  28.29%, 100% { left: -12%; opacity: 0 }
 }
 @keyframes moat-back {            /* block: gate -> guard -> back into the castle */
-  0%   { left: 70%; opacity: 0 }
-  2%   { opacity: 1 }
-  12%  { left: 59% }
-  20%  { left: 59% }
-  31%  { left: 72%; opacity: 1 }
-  33%, 100% { left: 72%; opacity: 0 }
+  0%     { left: 70%; opacity: 0 }
+  3.81%  { left: 68%; opacity: 1 }
+  10.29% { left: 59% }
+  17.14% { left: 59% }
+  24.76% { left: 70%; opacity: 1 }          /* 2.6 s: back at the gate */
+  28.29%, 100% { left: 72%; opacity: 0 }   /* fades out going inside */
 }
 @keyframes moat-turn {            /* faces left (out) until the guard says no, then faces the castle */
-  0%, 20% { transform: scaleX(-1) }
-  20.01%, 100% { transform: scaleX(1) }
+  0%, 17.14% { transform: scaleX(-1) }
+  17.24%, 100% { transform: scaleX(1) }
 }
 @keyframes moat-bubble {          /* the guard's verdict pops up while the messenger waits */
-  0%, 12% { opacity: 0; transform: translateY(4px) }
-  13%, 22% { opacity: 1; transform: translateY(0) }
-  24%, 100% { opacity: 0 }
+  0%, 10.29% { opacity: 0; transform: translateY(4px) }
+  11.14%, 18.86% { opacity: 1; transform: translateY(0) }
+  20.57%, 100% { opacity: 0 }
 }
 
-/* The guard checks each note: leans toward the messenger (the castle side) and bobs twice, like
-   reading. 3 s = one messenger's turn, so it repeats in step with the trips (they start 3 s apart).
-   The messenger stands still from 12% to 20% of its 9 s trip = 1.08 s to 1.8 s = 36% to 60% here. */
+/* The guard checks each note: leans toward the messenger and bobs twice, like reading, while
+   each one waits (1.02 s to 1.8 s after it sets off: at 1 s, 4 s and 7 s of the loop). */
 @keyframes moat-check {
-  0%, 34%   { transform: rotate(0) translateY(0) }
-  40%       { transform: rotate(5deg) translateY(-6%) }
-  46%       { transform: rotate(5deg) translateY(0) }
-  52%       { transform: rotate(5deg) translateY(-6%) }
-  60%, 100% { transform: rotate(0) translateY(0) }
+  0% { transform: rotate(0) translateY(0) }
+  9.71% { transform: rotate(0) translateY(0) }
+  11.43% { transform: rotate(5deg) translateY(-6%) }
+  13.14% { transform: rotate(5deg) translateY(0) }
+  14.86% { transform: rotate(5deg) translateY(-6%) }
+  17.14% { transform: rotate(0) translateY(0) }
+  38.29% { transform: rotate(0) translateY(0) }
+  40.00% { transform: rotate(5deg) translateY(-6%) }
+  41.71% { transform: rotate(5deg) translateY(0) }
+  43.43% { transform: rotate(5deg) translateY(-6%) }
+  45.71% { transform: rotate(0) translateY(0) }
+  66.86% { transform: rotate(0) translateY(0) }
+  68.57% { transform: rotate(5deg) translateY(-6%) }
+  70.29% { transform: rotate(5deg) translateY(0) }
+  72.00% { transform: rotate(5deg) translateY(-6%) }
+  74.29% { transform: rotate(0) translateY(0) }
+  100% { transform: rotate(0) translateY(0) }
 }
 
-/* On a block, the guard turns to face the messenger (sword first), as if stopping them.
-   9 s = the whole loop; the block messenger (starts at 6 s) waits from 7.08 s to 7.8 s and turns
-   back at 7.8 s, so the guard is flipped from 78% (7.0 s) to 92% (8.3 s). */
+/* On a block, the guard turns to face the messenger (sword first), as if stopping them:
+   7.0 s to 8.3 s, while the blocked messenger waits and turns back. */
 @keyframes moat-stop {
-  0%, 78%    { transform: scaleX(1) }
-  78.01%, 92% { transform: scaleX(-1) }
-  92.01%, 100% { transform: scaleX(1) }
+  0%, 66.67%    { transform: scaleX(1) }
+  66.76%, 79.05% { transform: scaleX(-1) }
+  79.14%, 100% { transform: scaleX(1) }
 }
