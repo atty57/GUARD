@@ -34,10 +34,31 @@ const TRIPS = [
 
 // One messenger's trip: the outer box moves along the bridge, the inner one flips to face the
 // castle on a block, the sprite itself flips between its two walk frames.
-function Trip({ delay, path, bubble, color }: (typeof TRIPS)[number]) {
+// The rewrite moment: a little note above the messenger where the secret part gets crossed out
+// and replaced, a tiny version of the word diff on the Compare screen. Runs on the same timing
+// as its messenger's trip, so it shows exactly while they wait at the guard.
+function RewriteNote({ timing }: { timing: string }) {
+  return (
+    <span
+      className="absolute -top-24 left-1/2 whitespace-nowrap rounded-md border-2 border-foreground/80 bg-[#fffdf8] px-2 py-1 font-mono text-xs shadow-[2px_2px_0_0] shadow-foreground/70"
+      style={{ animation: `moat-note ${timing}`, opacity: 0 }}
+    >
+      energy density{' '}
+      <span className="relative text-red-700">
+        above 360 Wh/kg
+        {/* the strike line grows from left to right */}
+        <span className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-red-700" style={{ animation: `moat-strike ${timing}` }} />
+      </span>{' '}
+      <span className="font-semibold text-emerald-700" style={{ animation: `moat-fix ${timing}`, opacity: 0 }}>characteristics</span>
+    </span>
+  )
+}
+
+function Trip({ outcome, delay, path, bubble, color }: (typeof TRIPS)[number]) {
   const timing = `10.5s linear ${delay}s infinite both`   // same length as the whole loop
   return (
     <div className="absolute bottom-[34%] h-[28%] aspect-square" style={{ animation: `${path} ${timing}`, opacity: 0 }}>
+      {outcome === 'rewrite' && <RewriteNote timing={timing} />}
       <span
         className={`absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border-2 px-2 py-1 font-mono text-sm font-bold shadow-[2px_2px_0_0] shadow-foreground/70 ${color}`}
         style={{ animation: `moat-bubble ${timing}`, opacity: 0 }}

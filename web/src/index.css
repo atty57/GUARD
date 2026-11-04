@@ -199,3 +199,21 @@
   66.76%, 79.05% { transform: scaleX(-1) }
   79.14%, 100% { transform: scaleX(1) }
 }
+
+/* Rewrite only: the note pops up while the messenger waits, the secret part is crossed out, then
+   the safe words appear (same words as the "compare run" example on the Compare screen).
+   Times are after this messenger sets off: card 1.08 s to 2.3 s, strike 1.25 s to 1.5 s,
+   new words from 1.5 s. */
+@keyframes moat-note {
+  0%, 10.29% { opacity: 0; transform: translate(-50%, 6px) scale(0.95) }
+  11.43%, 20.48% { opacity: 1; transform: translate(-50%, 0) scale(1) }
+  21.90%, 100% { opacity: 0; transform: translate(-50%, 0) scale(1) }
+}
+@keyframes moat-strike {
+  0%, 11.90% { width: 0 }
+  14.29%, 100% { width: 100% }
+}
+@keyframes moat-fix {
+  0%, 14.29% { opacity: 0 }
+  15.43%, 100% { opacity: 1 }
+}
