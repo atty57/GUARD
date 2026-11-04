@@ -35,7 +35,7 @@ import re
 _CLIENT: contextvars.ContextVar = contextvars.ContextVar("tier2_client", default=None)
 # Bump when SYSTEM / MAX_TOKENS / REASONING_EFFORT / RESPONSE_FORMAT change, so the runner can
 # fold Tier 2 config into each run's input fingerprint and re-run stale cells.
-TIER2_BEHAVIOR_VERSION = "t2.v1"
+TIER2_BEHAVIOR_VERSION = "t2.v2"
 MAX_TOKENS = 1024                      # retried once at double, like the agent graph (4k->8k rule)
 REASONING_EFFORT = "low"               # PLAN §8; checked against the Meta API
 RESPONSE_FORMAT = {"type": "json_schema", "json_schema": {"name": "rewrite", "schema": {
@@ -97,8 +97,8 @@ def parse(text: str) -> str:
 
 
 async def rewrite(draft: str, reasons: list[str], attributes: list[str], *, seed: int = 0) -> str:
-    """Ask the model for a safer query. Returns "" when it gives none; raises if the call fails
-    (the guard keeps its block in that case)."""
+    """Ask the model for a safer query. Returns "" when it gives none, or when the reply is still
+    cut off after the retry; raises if the call fails (the guard keeps its block either way)."""
     client = _CLIENT.get()
     if client is None:
         return ""
@@ -111,8 +111,8 @@ async def rewrite(draft: str, reasons: list[str], attributes: list[str], *, seed
         choice = resp.choices[0] if resp.choices else None
         text = (choice.message.content or "") if choice else ""
         if text.strip() and choice.finish_reason != "length":
-            break
-    return parse(text)
+            return parse(text)
+    return ""                          # still truncated or empty after the retry: keep the block
 
 
 # --- live smoke check: python -m guard.tier2 ----------------------------------------------------

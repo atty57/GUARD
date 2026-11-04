@@ -104,6 +104,14 @@ def test_truncated_reply_retried_once_at_double(policy, client):
     assert [k["max_tokens"] for k in c.calls] == [tier2.MAX_TOKENS, tier2.MAX_TOKENS * 2]
 
 
+def test_truncated_twice_keeps_the_block_even_with_valid_json(policy, client):
+    reply = '{"query": "high energy density pouch cell patents"}'
+    c = client((reply, "length"), (reply, "length"))
+    r = run(LEAKY, policy)
+    assert r.action == "block" and r.tier == 0 and len(c.calls) == 2
+    assert r.reasons[-1] == "tier 2: no rewrite passed tiers 0-1; block kept"
+
+
 def test_unsatisfiable_block_is_not_rewritten(policy, client):
     c = client(('{"query": "battery patents"}', "stop"))
     hist = [{"query": q, "hop": i, "run_id": "r"} for i, q in enumerate([
