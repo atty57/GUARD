@@ -73,3 +73,11 @@ def test_gain_ci_may_cross_zero(raw):
     d = copy.deepcopy(raw)
     d["conditions"][2]["leakage"]["categorical_gain"] = {"mean": 0.02, "ci95": [-0.04, 0.08]}
     EvalResults.model_validate(d)
+
+
+def test_external_reference_is_optional_and_separate(raw):
+    assert EvalResults.model_validate(raw).external_reference == []
+    d = copy.deepcopy(raw)
+    d["external_reference"] = [{"source": "MosaicLeaks", "label": "Qwen3-4B, privacy prompt",
+                                "leakage": 0.255}]
+    assert EvalResults.model_validate(d).external_reference[0].utility is None

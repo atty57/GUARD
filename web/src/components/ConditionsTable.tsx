@@ -8,7 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 // (numeric_gain) is a difference and can be negative, so the sign is kept.
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
-function Cell({ e }: { e: Estimate }) {
+function Cell({ e }: { e: Estimate | null }) {
+  // Not every number exists yet (e.g. no judge has scored the reports): say so instead of guessing.
+  if (!e) return <td className="px-3 py-2 text-right text-xs text-muted-foreground">not scored yet</td>
   return (
     <td className="px-3 py-2 text-right tabular-nums">
       {pct(e.mean)}

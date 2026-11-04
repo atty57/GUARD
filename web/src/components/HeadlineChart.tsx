@@ -1,15 +1,21 @@
 // The headline chart: how much each condition leaks (x) against how good its report stays (y).
-// Plus MOAT at five strictness levels (the tau sweep) as a line, with a slider to pick one.
+// Plus MOAT at other strictness levels (the tau sweep) as a line, with a slider to pick one.
 // Drawn as plain SVG: no chart library, so every line here can be read and changed directly.
 import { useState } from 'react'
 import type { ConditionResult, Estimate } from '@/evalTypes'
 import { CONDITIONS } from '@/evalTypes'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
-// Which two numbers the chart plots. Change them here and the whole chart follows.
-// (Waiting on Hyeseong to confirm these are the right headline metrics.)
+// Which numbers the chart plots. Change them here and the whole chart follows.
+// x is always the leak score (Hyeseong confirmed numeric_gain + rubric as the headline pair).
+// y is the first utility number every condition has. Until a judge has scored the reports
+// (rubric) or gold patents are labeled (citation_recall), there is none: the chart then shows
+// the leak score alone.
 const X = { label: 'Leak score', pick: (c: ConditionResult) => c.leakage.numeric_gain }
-const Y = { label: 'Report quality', pick: (c: ConditionResult) => c.utility.rubric }
+const Y_OPTIONS = [
+  { label: 'Report quality', pick: (c: ConditionResult) => c.utility.rubric },
+  { label: 'Patents cited', pick: (c: ConditionResult) => c.utility.citation_recall },
+]
 
 // Drawing area in SVG units. The SVG scales to the card's width via viewBox.
 const W = 640, H = 340
@@ -32,9 +38,15 @@ export function HeadlineChart({ conditions, sweep }: { conditions: ConditionResu
   const policyTau = conditions[0]?.tau
   const [picked, setPicked] = useState(Math.max(0, sweep.findIndex((p) => p.tau === policyTau)))
 
+  const Y = Y_OPTIONS.find((o) => conditions.every((c) => o.pick(c))) ?? null
+  // Sweep points without that number can't be placed, so the line only uses the ones that have it.
+  const line = Y ? sweep.filter((c) => Y.pick(c)) : []
+  const yOf = (c: ConditionResult): Estimate => Y!.pick(c)!   // only called where Y.pick(c) exists
+
   // Axis ranges cover every point and every confidence whisker.
   const all = [...conditions, ...sweep]
-  const xs = all.flatMap((c) => X.pick(c).ci95), ys = all.flatMap((c) => Y.pick(c).ci95)
+  const xs = all.flatMap((c) => X.pick(c).ci95)
+  const ys = Y ? [...conditions, ...line].flatMap((c) => yOf(c).ci95) : [0, 1]
   // Start at 0 ("nothing leaked"), or lower only if some value really is negative.
   const [x0, x1] = niceRange([0, ...xs], Math.min(0, ...xs) < 0 ? undefined : 0)
   const [y0, y1] = niceRange(ys, 0, 1)
@@ -53,14 +65,41 @@ export function HeadlineChart({ conditions, sweep }: { conditions: ConditionResu
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Leak vs report quality</CardTitle>
+        <CardTitle>{Y ? `Leak vs ${Y.label.toLowerCase()}` : 'Leak score'}</CardTitle>
         <CardDescription>
-          Best is the top-left corner: little leaked, good report. Lines through each dot are the 95% confidence range.
-          The green line is MOAT at five strictness levels (τ).
+          {Y
+            ? <>Best is the top-left corner: little leaked, good report. Lines through each dot are the 95% confidence
+                range.{line.length > 0 && ' The green line is MOAT at other strictness levels (τ).'}</>
+            : <>Report quality isn't scored yet, so this shows how much each condition leaked. Lower is better; the
+                line around each dot is the 95% confidence range.</>}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
+        {!Y && (
+          // Leak score only: one row per condition, dot = mean, line = confidence range.
+          <ul className="flex flex-col gap-4">
+            {CONDITIONS.map(({ id, label, color }) => {
+              const c = conditions.find((x) => x.condition === id)
+              if (!c) return null
+              const e = X.pick(c), pos = (v: number) => ((v - x0) / (x1 - x0)) * 100
+              return (
+                <li key={id} className="grid grid-cols-[7rem_1fr_3rem] items-center gap-3 text-sm">
+                  <span>{label}</span>
+                  <div className="relative h-3 rounded-full bg-muted" role="img"
+                       aria-label={`${label}: leak score ${pct(e.mean)}, range ${pct(e.ci95[0])} to ${pct(e.ci95[1])}`}>
+                    <div className="absolute top-1/2 h-0.5 -translate-y-1/2"
+                         style={{ left: `${pos(e.ci95[0])}%`, width: `${pos(e.ci95[1]) - pos(e.ci95[0])}%`, background: color }} />
+                    <div className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                         style={{ left: `${pos(e.mean)}%`, background: color }} />
+                  </div>
+                  <span className="text-right tabular-nums">{pct(e.mean)}</span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        {Y && <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
              aria-label={`Leak score against report quality for ${conditions.length} conditions and MOAT at ${sweep.length} strictness levels`}>
           {/* grid lines and axis labels */}
           {ticks(x0, x1).map((t) => (
@@ -85,13 +124,13 @@ export function HeadlineChart({ conditions, sweep }: { conditions: ConditionResu
 
           {/* MOAT tau sweep: a line through the five points, the picked one ringed */}
           <polyline fill="none" stroke={MOAT_COLOR} strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7}
-                    points={sweep.map((c) => `${sx(X.pick(c).mean)},${sy(Y.pick(c).mean)}`).join(' ')} />
-          {sweep.map((c, i) => (
+                    points={line.map((c) => `${sx(X.pick(c).mean)},${sy(yOf(c).mean)}`).join(' ')} />
+          {line.map((c, i) => (
             <g key={c.tau}>
-              <circle cx={sx(X.pick(c).mean)} cy={sy(Y.pick(c).mean)} r={i === picked ? 8 : 3}
-                      fill={i === picked ? 'none' : MOAT_COLOR} stroke={MOAT_COLOR} strokeWidth={i === picked ? 2 : 0} />
-              {(i === 0 || i === sweep.length - 1 || i === picked) && (
-                <text x={sx(X.pick(c).mean) + 10} y={sy(Y.pick(c).mean) + 4} className="fill-muted-foreground text-[10px]">
+              <circle cx={sx(X.pick(c).mean)} cy={sy(yOf(c).mean)} r={c.tau === p?.tau ? 8 : 3}
+                      fill={c.tau === p?.tau ? 'none' : MOAT_COLOR} stroke={MOAT_COLOR} strokeWidth={c.tau === p?.tau ? 2 : 0} />
+              {(i === 0 || i === line.length - 1 || c.tau === p?.tau) && (
+                <text x={sx(X.pick(c).mean) + 10} y={sy(yOf(c).mean) + 4} className="fill-muted-foreground text-[10px]">
                   τ {c.tau}
                 </text>
               )}
@@ -102,7 +141,7 @@ export function HeadlineChart({ conditions, sweep }: { conditions: ConditionResu
           {CONDITIONS.map(({ id, label, color }) => {
             const c = conditions.find((x) => x.condition === id)
             if (!c) return null
-            const ex: Estimate = X.pick(c), ey: Estimate = Y.pick(c)
+            const ex: Estimate = X.pick(c), ey: Estimate = yOf(c)
             return (
               <g key={id}>
                 <line x1={sx(ex.ci95[0])} x2={sx(ex.ci95[1])} y1={sy(ey.mean)} y2={sy(ey.mean)} stroke={color} strokeWidth={1.5} opacity={0.6} />
@@ -113,7 +152,7 @@ export function HeadlineChart({ conditions, sweep }: { conditions: ConditionResu
               </g>
             )
           })}
-        </svg>
+        </svg>}
 
         {/* Legend instead of labels on the dots: MOAT and MOAT + prompt can land almost on top of each other. */}
         <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
@@ -123,13 +162,14 @@ export function HeadlineChart({ conditions, sweep }: { conditions: ConditionResu
               {label}
             </li>
           ))}
-          <li className="flex items-center gap-2 text-muted-foreground">
+          {line.length > 0 && <li className="flex items-center gap-2 text-muted-foreground">
             <svg width="22" height="8" aria-hidden><line x1="0" x2="22" y1="4" y2="4" stroke={MOAT_COLOR} strokeWidth={1.5} strokeDasharray="4 3" /></svg>
             MOAT at other strictness levels
-          </li>
+          </li>}
         </ul>
 
-        {/* strictness slider: picks one point of the MOAT line and shows its numbers */}
+        {/* strictness slider: picks one point of the MOAT sweep and shows its numbers.
+            Hidden until the sweep has run (tau_sweep empty). */}
         {p && (
           <div className="flex flex-col gap-2 rounded-lg border p-4">
             <label htmlFor="tau" className="flex items-center justify-between text-sm font-medium">
@@ -143,7 +183,7 @@ export function HeadlineChart({ conditions, sweep }: { conditions: ConditionResu
             </div>
             <dl className="grid grid-cols-2 gap-3 pt-2 text-sm sm:grid-cols-4">
               <div><dt className="text-muted-foreground">{X.label}</dt><dd className="font-medium tabular-nums">{pct(X.pick(p).mean)}</dd></div>
-              <div><dt className="text-muted-foreground">{Y.label}</dt><dd className="font-medium tabular-nums">{pct(Y.pick(p).mean)}</dd></div>
+              {Y && Y.pick(p) && <div><dt className="text-muted-foreground">{Y.label}</dt><dd className="font-medium tabular-nums">{pct(yOf(p).mean)}</dd></div>}
               <div><dt className="text-muted-foreground">Drafts blocked</dt><dd className="font-medium tabular-nums">{pct(p.flow.block_rate)}</dd></div>
               <div><dt className="text-muted-foreground">Searches skipped</dt><dd className="font-medium tabular-nums">{pct(p.flow.skip_rate)}</dd></div>
             </dl>

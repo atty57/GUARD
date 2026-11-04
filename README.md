@@ -56,6 +56,8 @@ We wrote 150 attack queries, each trying to get one secret past the guard in one
 | Spelled-out / relative / derived values | 0 / 5 / 0 of 15 each | 15 / 15 / 14 |
 | Harmless queries wrongly stopped | 2/150 | 2/150 |
 
+For example, "68 Wh cell weighing 250 g" never states the secret, but it works out to 272 Wh/kg; Tier 0 now catches it.
+
 ### 2. Observer: does the agent leak on real tasks?
 
 The agent did the 5 tasks in 4 conditions (no guard, a "do not disclose" prompt, MOAT, MOAT + prompt) on docs with 3 kinds of label, 60 runs in all (#72). An observer model plays the search provider: it reads only the queries that went out and tries to recover each secret.
