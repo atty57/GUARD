@@ -224,6 +224,17 @@ def policy_limits(tau: float | None = Query(default=None, gt=0)):
 # catch-all below matches every path, so every /api route must be added before it.
 # Only active when web/dist/ exists. In development (no build) nothing changes: Vite serves the
 # page on :5173 and passes /api calls through to this server.
+def dist_file(path: str) -> Path:
+    """Which file of the built app to send for `path`: the file itself if it is one of the
+    build's files (e.g. the favicon), otherwise index.html (the app). The parents check stops
+    paths like "../../secret" from reading anything outside web/dist/. Its own function so the
+    tests can check it without a build."""
+    file = (WEB_DIST / path).resolve()
+    if path and file.is_file() and WEB_DIST.resolve() in file.parents:
+        return file
+    return WEB_DIST / "index.html"
+
+
 if WEB_DIST.is_dir():
     # The JS/CSS bundles that index.html loads.
     app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
@@ -233,10 +244,4 @@ if WEB_DIST.is_dir():
         # A mistyped API address should still be an API 404, not the web page.
         if path == "api" or path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not Found")
-        # Other files from the build (e.g. the favicon). The parents check stops paths like
-        # "../../secret" from reading files outside web/dist/.
-        file = (WEB_DIST / path).resolve()
-        if path and file.is_file() and WEB_DIST.resolve() in file.parents:
-            return FileResponse(file)
-        # Everything else gets the app itself.
-        return FileResponse(WEB_DIST / "index.html")
+        return FileResponse(dist_file(path))
