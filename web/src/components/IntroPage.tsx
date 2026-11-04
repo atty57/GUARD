@@ -138,9 +138,9 @@ function Signpost() {
 // A pixel cloud: a small block sitting on a wider one. Drifts across the sky; a negative delay
 // starts each one part-way along, so the sky isn't empty when the page opens.
 const CLOUDS = [
-  { top: '10%', width: '11%', duration: 70, delay: -20 },
-  { top: '22%', width: '8%', duration: 95, delay: -65 },
-  { top: '6%', width: '9%', duration: 85, delay: -5 },
+  { top: '10%', width: '11%', duration: 200, delay: -60 },
+  { top: '22%', width: '8%', duration: 260, delay: -180 },
+  { top: '6%', width: '9%', duration: 230, delay: -15 },
 ]
 
 function Cloud({ top, width, duration, delay }: (typeof CLOUDS)[number]) {
@@ -152,12 +152,6 @@ function Cloud({ top, width, duration, delay }: (typeof CLOUDS)[number]) {
     </div>
   )
 }
-
-// Little light dashes on the water, a repeating tile that slides right, like a gentle current.
-const WATER_DASHES = `url("data:image/svg+xml,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="22" shape-rendering="crispEdges">' +
-  '<rect x="6" y="5" width="10" height="2" fill="#bfdbfe"/><rect x="38" y="15" width="8" height="2" fill="#bfdbfe"/></svg>',
-)}")`
 
 const OUTCOMES = [
   { label: 'Pass', text: 'Harmless search? Let it through.', swatch: 'bg-emerald-200 border-emerald-700' },
@@ -195,8 +189,6 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
         {/* ground, moat, bridge */}
         <div className="absolute inset-x-0 bottom-[30%] h-[8%] bg-emerald-300/70" />
         <div className="absolute inset-x-0 bottom-0 h-[30%] bg-sky-600/80" />
-        <div className="absolute inset-x-0 bottom-0 h-[28%] opacity-70 motion-safe:animate-[moat-ripple_4s_steps(16)_infinite]"
-             style={{ backgroundImage: WATER_DASHES }} aria-hidden />
         {CLOUDS.map((c, i) => <Cloud key={i} {...c} />)}
         <div className="absolute bottom-[30%] left-[30%] h-[5%] w-[41%] bg-amber-800" />
 

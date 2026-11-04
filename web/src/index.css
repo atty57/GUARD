@@ -234,6 +234,5 @@
   15.43%, 100% { opacity: 1 }
 }
 
-/* Sky and water: slow, separate from the 10.5 s story loop, so they never need syncing. */
+/* Sky: slow, separate from the 10.5 s story loop, so they never need syncing. */
 @keyframes moat-drift { from { left: -14% } to { left: 104% } }          /* a cloud crossing the sky */
-@keyframes moat-ripple { from { background-position: 0 0 } to { background-position: 64px 0 } }  /* water dashes flowing right */
