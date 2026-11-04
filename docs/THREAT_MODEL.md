@@ -22,7 +22,7 @@ Structured by the four questions of the [Threat Modeling Manifesto](https://www.
                                                    trust boundary = dispatch to search()
 ```
 
-A query is disclosed the moment it is handed to `search()` (INTERFACES §2). Everything before that point is inside the boundary, except that prompts and docs also reach the model provider, which we trust (§6). A Tier 2 rewrite (planned) is re-checked by Tiers 0–1 before it can go out (INTERFACES §1, `rechecked`). In this project `search()` is a local BM25 corpus (INTERFACES §2) standing in for an external provider, and the evaluation's observer plays A1.
+A query is disclosed the moment it is handed to `search()` (INTERFACES §2). Everything before that point is inside the boundary, except that prompts and docs also reach the model provider, which we trust (§6). The guard has three tiers: Tier 0 checks the values and names in one query, Tier 1 checks it against what has already been sent, and Tier 2 rewrites a flagged query (#61), which is re-checked by Tiers 0–1 before it can go out (INTERFACES §1, `rechecked`; design in PLAN §8). In this project `search()` is a local BM25 corpus (INTERFACES §2) standing in for an external provider, and the evaluation's observer plays A1.
 
 | Trusted | Untrusted |
 | --- | --- |
@@ -71,11 +71,13 @@ Leak types use the frozen `LeakType` vocabulary (INTERFACES §3).
 | `split` | "above 250 Wh/kg" then "below 280 Wh/kg" | Tier 1 ledger: cumulative interval over sent queries | done (H5, #47) |
 | `intent_profile` | "high-nickel pouch … European OEM" then "silicon anode … SOP 2027" | Tier 1 profile check: candidate products that fit, `k_min` | done (H5, #47) |
 | `exact_value` (approximation) | "approximately 640 mAh/g" (secret 620, just outside `bound_tol`) | H4 (#19) | planned |
-| `derived`, `relative` | "5 Ah, 3.65 V, 68 g" → 268 Wh/kg | H4 (#19) | planned |
-| `encoding` | "two hundred seventy Wh/kg" | H4 (#19) | planned |
+| `relative` | "7 Wh/kg over 265 Wh/kg", "twice 600 cycles" | Tier 0: offset and multiple rewritten to a value | done (H4, #70) |
+| `derived` | "68 Wh cell weighing 250 g" → 272 Wh/kg; "scrap rate 6.5%" → yield | Tier 0: energy or charge per mass, complement rates, days to hours | done (H4, #70) |
+| `derived` (products) | "5 Ah, 3.65 V, 68 g" → 268 Wh/kg | needs Ah × V | planned |
+| `encoding` | "two hundred seventy Wh/kg", "2.72e2 Wh/kg", "745C" | Tier 0: spelled-out and scientific numbers, bare C | done (H4, #70) |
 | `process_fingerprint` | temperature + dopant + atmosphere together | — | planned, unassigned |
 
-Known gaps in the parser today: unitless numbers and ratios ("0.88 nickel ratio"), a bare "C" for Celsius ("745C"), and bounds without a unit. The company and product names ("Halden", "HX-9") are not in the policy yet, so a query naming them passes.
+Known gaps in the parser today: unitless numbers and ratios ("0.88 nickel ratio"), bounds without a unit or with the unit before the numbers ("cycles between 1190 and 1210"), and "per" ratios ("6.2 mAh per 10 mg"). Products such as Ah × V are not computed yet. Three of the attack suite's five misses (#71) fall in these gaps; the other two are profile queries where "silicon-anode" or "silicon anodes" is not read as the anode attribute. Company and product names are in the policy since #60.
 
 ## 5. Security properties we claim
 
@@ -86,7 +88,7 @@ P1, P2, P5 and P6 describe `guard.check`, which the agent graph uses by default 
 | P1 | No dispatched query states a protected value within `bound_tol`, in its own unit or another, for the number and unit forms Tier 0 parses (fraction units only when the attribute is named). A number equal to the secret's public threshold is not counted (DATA_SPEC §2) | Tier 0 | `guard/tests/test_check.py` |
 | P2 | For each numeric secret, the interval implied by all dispatched bounds that hold for its value, or miss it by at most half the effective min width, stays at least the min width, within the bits budget, and doesn't settle which side of a threshold the value is on. Only for the bound and range forms Tier 1 parses (a unit is required; fraction units only when the attribute is named in the same query) | Tier 1 ledger | `guard/tests/test_ledger.py` |
 | P3 | Fail closed: a guard exception is a block; a blocked draft is never dispatched and never enters the history | agent graph + guard | `agent/tests/test_graph.py` (`test_guard_exception_counts_as_block`, `test_block_at_cap_skips_and_never_searches`); "never enters the history" by code (`query_log` is appended only in `web_search`) |
-| P4 | Separation: the guard reads the policy and catalog only; the agent reads docs; the observer reads dispatched queries only; test-split secrets stay out of the repo | repo layout, DATA_SPEC §7 | graph state has no ground-truth field (`agent/tests/test_graph.py::test_state_has_no_ground_truth_field`); observer and test-split paths: planned |
+| P4 | Separation: the guard reads the policy and catalog only; the agent reads docs; the observer reads dispatched queries only; test-split secrets stay out of the repo | repo layout, DATA_SPEC §7 | graph state has no ground-truth field (`agent/tests/test_graph.py::test_state_has_no_ground_truth_field`); observer reads dispatched queries only (`eval/observer.py`, #59); test-split paths: planned |
 | P5 | Guard `reasons` never contain the matched text or a secret value; they name the secret id and `dim`, or for profile blocks the attribute names and k | guard | `guard/tests/test_check.py::test_reasons_never_contain_the_secret` |
 | P6 | At least `k_min` catalog products fit every catalog term in dispatched queries that is true of our product | Tier 1 profile check | `guard/tests/test_profile.py` |
 

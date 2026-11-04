@@ -1,21 +1,32 @@
 import copy
 import json
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from eval.schema import DEFAULT_PATH, EvalResults, load_results
 
+# The schema tests edit a full example (tau sweep, attacks, comparisons filled in), so they use a
+# frozen copy of the original placeholder rather than whatever results are committed.
+FIXTURE = Path(__file__).parent / "fixtures" / "eval_results.placeholder.json"
+
 
 @pytest.fixture
 def raw() -> dict:
-    return json.loads(DEFAULT_PATH.read_text(encoding="utf-8"))
+    return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
 
-def test_committed_file_validates():
-    r = load_results()
-    assert r.placeholder  # flip to False when real results replace it
+@pytest.mark.parametrize("path", [DEFAULT_PATH, DEFAULT_PATH.with_name("eval_results.unlabeled.json")])
+def test_committed_files_validate(path):
+    if not path.exists():
+        pytest.skip(f"{path.name} not committed")
+    r = load_results(path)
     assert {c.condition for c in r.conditions} == {"none", "prompt", "moat", "moat_prompt"}
+
+
+def test_fixture_is_the_placeholder(raw):
+    assert EvalResults.model_validate(raw).placeholder
 
 
 def _bad(raw, edit):

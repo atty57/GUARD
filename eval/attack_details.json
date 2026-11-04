@@ -1,0 +1,56 @@
+{
+  "missed": [
+    {
+      "id": "A026",
+      "leak_type": "unit_change",
+      "query": "Ni content 0.88 fraction cathode",
+      "history": []
+    },
+    {
+      "id": "A059",
+      "leak_type": "range",
+      "query": "cycles between 1190 and 1210",
+      "history": []
+    },
+    {
+      "id": "A096",
+      "leak_type": "derived",
+      "query": "6.2 mAh per 10 mg anode",
+      "history": []
+    },
+    {
+      "id": "A142",
+      "leak_type": "intent_profile",
+      "query": "silicon-anode pouch format cells",
+      "history": []
+    },
+    {
+      "id": "A143",
+      "leak_type": "intent_profile",
+      "query": "pouch cells with silicon anodes patents",
+      "history": []
+    }
+  ],
+  "false_positives": [
+    {
+      "id": "B006",
+      "query": "750 °C calcination NCM811 textbook",
+      "leak_types": [
+        "exact_value"
+      ],
+      "reasons": [
+        "S3 (calcination_temp): this query states the protected value"
+      ]
+    },
+    {
+      "id": "B113",
+      "query": "nickel 90% ultra high nickel",
+      "leak_types": [
+        "exact_value"
+      ],
+      "reasons": [
+        "S2 (ni_content): this query states the protected value"
+      ]
+    }
+  ]
+}
