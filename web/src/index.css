@@ -149,8 +149,8 @@
   3.81%  { left: 68%; opacity: 1 }          /* 0.4 s: steps out of the gate */
   10.29% { left: 59% }                     /* 1.08 s: reaches the guard */
   17.14% { left: 59% }                     /* 1.8 s: the guard has checked the note */
-  27.43% { left: -12%; opacity: 1 }        /* 2.88 s: off to the web */
-  28.29%, 100% { left: -12%; opacity: 0 }
+  38.10% { left: -12%; opacity: 1 }        /* 4.0 s: a calm walk past the spy, off to the web */
+  38.86%, 100% { left: -12%; opacity: 0 }
 }
 @keyframes moat-back {            /* block: gate -> guard -> back into the castle */
   0%     { left: 70%; opacity: 0 }
@@ -200,6 +200,22 @@
   79.14%, 100% { transform: scaleX(1) }
 }
 
+/* The spy on the web side. He lifts his magnifying glass as each messenger that got out walks
+   past him (pass at 2.9-4.0 s, rewrite at 5.9-7.0 s). The blocked note never reaches him. */
+@keyframes moat-spy-look {
+  0%, 27.62% { transform: rotate(0) }
+  29.52%, 36.19% { transform: rotate(-35deg) }
+  38.10%, 56.19% { transform: rotate(0) }
+  58.10%, 64.76% { transform: rotate(-35deg) }
+  66.67%, 100% { transform: rotate(0) }
+}
+/* ...so after the block he's left wondering (8.3-9.8 s). */
+@keyframes moat-spy-huh {
+  0%, 79.05% { opacity: 0; transform: translate(-50%, 4px) }
+  80.95%, 91.43% { opacity: 1; transform: translate(-50%, 0) }
+  93.33%, 100% { opacity: 0 }
+}
+
 /* Rewrite only: the note pops up while the messenger waits, the secret part is crossed out, then
    the safe words appear (same words as the "compare run" example on the Compare screen).
    Times are after this messenger sets off: card 1.08 s to 2.3 s, strike 1.25 s to 1.5 s,
@@ -216,20 +232,4 @@
 @keyframes moat-fix {
   0%, 14.29% { opacity: 0 }
   15.43%, 100% { opacity: 1 }
-}
-
-/* The spy on the web side. He lifts his magnifying glass as each messenger that got out walks
-   past him (pass at 2.2-3.1 s, rewrite at 5.2-6.1 s). The blocked note never reaches him. */
-@keyframes moat-spy-look {
-  0%, 20.95% { transform: rotate(0) }
-  22.86%, 27.62% { transform: rotate(-35deg) }
-  29.52%, 49.52% { transform: rotate(0) }
-  51.43%, 56.19% { transform: rotate(-35deg) }
-  58.10%, 100% { transform: rotate(0) }
-}
-/* ...so after the block he's left wondering (8.3-9.8 s). */
-@keyframes moat-spy-huh {
-  0%, 79.05% { opacity: 0; transform: translate(-50%, 4px) }
-  80.95%, 91.43% { opacity: 1; transform: translate(-50%, 0) }
-  93.33%, 100% { opacity: 0 }
 }

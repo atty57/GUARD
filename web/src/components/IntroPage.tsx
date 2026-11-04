@@ -31,35 +31,25 @@ const TRIPS = [
   { outcome: 'rewrite', delay: 3, path: 'moat-out', bubble: '✎ rewritten', color: 'bg-amber-200 border-amber-700 text-amber-900' },
   { outcome: 'block', delay: 6, path: 'moat-back', bubble: '✕ blocked', color: 'bg-red-200 border-red-700 text-red-900' },
 ] as const
-type Outcome = (typeof TRIPS)[number]['outcome']
 
 // One messenger's trip: the outer box moves along the bridge, the inner one flips to face the
 // castle on a block, the sprite itself flips between its two walk frames.
-// The note each messenger carries: it pops up while they wait at the guard, so you can see what
-// the guard is reading. Same words as the Compare screen's example run where possible.
-//   pass:    a harmless search, nothing changes
-//   rewrite: the secret part is crossed out and replaced (a tiny version of the word diff)
-//   block:   the secret part is highlighted, and the search never leaves
-const NOTE_BOX = 'absolute -top-24 hidden sm:block left-1/2 whitespace-nowrap rounded-md border-2 border-foreground/80 bg-[#fffdf8] px-2 py-1 font-mono text-xs shadow-[2px_2px_0_0] shadow-foreground/70'
-
-function Note({ outcome, timing }: { outcome: Outcome; timing: string }) {
+// The rewrite moment: a little note above the messenger where the secret part gets crossed out
+// and replaced, a tiny version of the word diff on the Compare screen. Runs on the same timing
+// as its messenger's trip, so it shows exactly while they wait at the guard.
+function RewriteNote({ timing }: { timing: string }) {
   return (
-    <span className={NOTE_BOX} style={{ animation: `moat-note ${timing}`, opacity: 0 }}>
-      {outcome === 'pass' && <>NCM811 cathode thermal stability</>}
-      {outcome === 'rewrite' && (
-        <>
-          energy density{' '}
-          <span className="relative text-red-700">
-            above 360 Wh/kg
-            {/* the strike line grows from left to right */}
-            <span className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-red-700" style={{ animation: `moat-strike ${timing}` }} />
-          </span>{' '}
-          <span className="font-semibold text-emerald-700" style={{ animation: `moat-fix ${timing}`, opacity: 0 }}>characteristics</span>
-        </>
-      )}
-      {outcome === 'block' && (
-        <>our <span className="rounded-sm bg-red-200 px-0.5 font-semibold text-red-800">2027 solid-state launch date</span></>
-      )}
+    <span
+      className="absolute top-[105%] left-1/2 whitespace-nowrap rounded-md border-2 border-foreground/80 bg-[#fffdf8] px-1 py-0.5 font-mono text-[9px] sm:-top-24 sm:px-2 sm:py-1 sm:text-xs shadow-[2px_2px_0_0] shadow-foreground/70"
+      style={{ animation: `moat-note ${timing}`, opacity: 0 }}
+    >
+      <span className="hidden sm:inline">energy density </span>
+      <span className="relative text-red-700">
+        <span className="hidden sm:inline">above </span>360 Wh/kg
+        {/* the strike line grows from left to right */}
+        <span className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-red-700" style={{ animation: `moat-strike ${timing}` }} />
+      </span>{' '}
+      <span className="font-semibold text-emerald-700" style={{ animation: `moat-fix ${timing}`, opacity: 0 }}>characteristics</span>
     </span>
   )
 }
@@ -68,7 +58,7 @@ function Trip({ outcome, delay, path, bubble, color }: (typeof TRIPS)[number]) {
   const timing = `10.5s linear ${delay}s infinite both`   // same length as the whole loop
   return (
     <div className="absolute bottom-[34%] h-[28%] aspect-square" style={{ animation: `${path} ${timing}`, opacity: 0 }}>
-      <Note outcome={outcome} timing={timing} />
+      {outcome === 'rewrite' && <RewriteNote timing={timing} />}
       <span
         className={`absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border-2 px-1 py-0.5 font-mono text-[10px] font-bold sm:-top-10 sm:px-2 sm:py-1 sm:text-sm shadow-[2px_2px_0_0] shadow-foreground/70 ${color}`}
         style={{ animation: `moat-bubble ${timing}`, opacity: 0 }}
