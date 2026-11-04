@@ -165,11 +165,11 @@
   91.08% { left: -12%; opacity: 1 }
   91.85%, 100% { left: -12%; opacity: 0 }
 }
-/* scene 1 note: visible the whole walk, so you can read the secret going out */
+/* scene 1 note: visible as it leaves the castle, gone before it reaches the corner tag; the spy's bubble then shows what got out */
 @keyframes moat-off-note {
   0%, 3.85% { opacity: 0 }
-  5.38%, 22.31% { opacity: 1 }
-  23.85%, 100% { opacity: 0 }
+  5.38%, 13.85% { opacity: 1 }
+  15.38%, 100% { opacity: 0 }
 }
 /* scene 2 note: from the gate until the spy has read it */
 @keyframes moat-on-note {

@@ -196,7 +196,7 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
           <Spy />
           {/* scene 1: he got the number. scene 2: he got nothing useful. */}
           <span className={`${BUBBLE} z-10 -top-5 left-[10%] border-red-700 bg-red-200 text-red-900 motion-reduce:hidden sm:-top-9`}
-                style={{ animation: `moat-spy-got ${LOOP}`, opacity: 0 }} aria-hidden><Extra>the secret: </Extra>272 Wh/kg!</span>
+                style={{ animation: `moat-spy-got ${LOOP}`, opacity: 0 }} aria-hidden><span className="hidden lg:inline">the secret: </span>272 Wh/kg!</span>
           <span className={`${BUBBLE} z-10 -top-5 left-[30%] border-foreground/80 bg-card motion-reduce:hidden sm:-top-9`}
                 style={{ animation: `moat-spy-huh ${LOOP}`, opacity: 0 }} aria-hidden>?<Extra> nothing useful</Extra></span>
         </div>
@@ -235,6 +235,11 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
 
       </div>
 
+      {/* The animation shows one of MOAT's moves (a rewrite); these name all three, in the same
+          words the Compare screen uses on every hop. */}
+      {/* Extra space above (mt-6) and little below (gap-3), so the heading groups with the cards, not the scene. */}
+      <section className="mt-6 flex flex-col gap-3">
+      <h3 className="font-mono text-xs font-semibold uppercase tracking-widest text-muted-foreground">What MOAT can do with each search</h3>
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {OUTCOMES.map((o) => (
           <li key={o.label} className="flex items-start gap-3 rounded-lg border bg-card p-4">
@@ -246,6 +251,7 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
           </li>
         ))}
       </ul>
+      </section>
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm">
