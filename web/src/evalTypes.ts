@@ -69,7 +69,7 @@ export type EvalResults = {
   generated_at: string
   split: 'dev' | 'test'
   // Added in #59; optional so older files still load.
-  setting?: 'labeled' | 'unlabeled' | null   // docs with or without the CONFIDENTIAL label (#11)
+  setting?: 'labeled' | 'unlabeled' | null   // docs marked CONFIDENTIAL, or INTERNAL instead (#11, #68)
   external_reference?: ExternalPoint[]
   quality?: Quality | null
   n_tasks: number
