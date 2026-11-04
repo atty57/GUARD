@@ -133,3 +133,37 @@
     @apply font-sans;
     }
 }
+/* ---------- Intro scene animation (IntroPage.tsx) ----------
+   A 9 s loop, three messengers, one at a time (delays 0 s, 3 s, 6 s). Each one comes out of the
+   castle gate, stops at the guard, then:
+     pass    -> walks on, out to the web
+     rewrite -> the note changes, walks on
+     block   -> turns around, walks back into the castle
+   Positions are "left" in % of the scene, so the loop scales with the screen. */
+@keyframes moat-walk { 0% { background-position: 0% 0 } 50% { background-position: 100% 0 } }  /* 2 walk frames */
+
+@keyframes moat-out {             /* pass and rewrite: gate -> guard -> off to the web */
+  0%   { left: 70%; opacity: 0 }
+  2%   { opacity: 1 }
+  12%  { left: 59% }
+  20%  { left: 59% }              /* the guard checks the note (just right of the guard) */
+  32%  { left: -12%; opacity: 1 }
+  33%, 100% { left: -12%; opacity: 0 }
+}
+@keyframes moat-back {            /* block: gate -> guard -> back into the castle */
+  0%   { left: 70%; opacity: 0 }
+  2%   { opacity: 1 }
+  12%  { left: 59% }
+  20%  { left: 59% }
+  31%  { left: 72%; opacity: 1 }
+  33%, 100% { left: 72%; opacity: 0 }
+}
+@keyframes moat-turn {            /* faces left (out) until the guard says no, then faces the castle */
+  0%, 20% { transform: scaleX(-1) }
+  20.01%, 100% { transform: scaleX(1) }
+}
+@keyframes moat-bubble {          /* the guard's verdict pops up while the messenger waits */
+  0%, 12% { opacity: 0; transform: translateY(4px) }
+  13%, 22% { opacity: 1; transform: translateY(0) }
+  24%, 100% { opacity: 0 }
+}

@@ -24,6 +24,37 @@ function Messenger({ frame = 0, faceRight = false }: { frame?: 0 | 1; faceRight?
   )
 }
 
+// The three trips in the loop: one per outcome, 3 s apart (see the moat-* keyframes in index.css).
+const TRIPS = [
+  { outcome: 'pass', delay: 0, path: 'moat-out', bubble: '✓ pass', color: 'bg-emerald-200 border-emerald-700 text-emerald-900' },
+  { outcome: 'rewrite', delay: 3, path: 'moat-out', bubble: '✎ rewritten', color: 'bg-amber-200 border-amber-700 text-amber-900' },
+  { outcome: 'block', delay: 6, path: 'moat-back', bubble: '✕ blocked', color: 'bg-red-200 border-red-700 text-red-900' },
+] as const
+
+// One messenger's trip: the outer box moves along the bridge, the inner one flips to face the
+// castle on a block, the sprite itself flips between its two walk frames.
+function Trip({ delay, path, bubble, color }: (typeof TRIPS)[number]) {
+  const timing = `9s linear ${delay}s infinite both`
+  return (
+    <div className="absolute bottom-[34%] h-[28%] aspect-square" style={{ animation: `${path} ${timing}`, opacity: 0 }}>
+      <span
+        className={`absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border-2 px-2 py-1 font-mono text-sm font-bold shadow-[2px_2px_0_0] shadow-foreground/70 ${color}`}
+        style={{ animation: `moat-bubble ${timing}`, opacity: 0 }}
+      >
+        {bubble}
+      </span>
+      <div className="h-full" style={{ animation: path === 'moat-back' ? `moat-turn ${timing}` : undefined, transform: 'scaleX(-1)' }}>
+        <div
+          aria-hidden
+          className="aspect-square h-full"
+          style={{ ...PIXEL, backgroundImage: `url(${messenger})`, backgroundSize: '200% 100%',
+                   animation: 'moat-walk 0.4s steps(1) infinite' }}
+        />
+      </div>
+    </div>
+  )
+}
+
 const OUTCOMES = [
   { label: 'Pass', text: 'Harmless search? Let it through.', swatch: 'bg-emerald-200 border-emerald-700' },
   { label: 'Rewrite', text: 'Too revealing? Remove the clue.', swatch: 'bg-amber-200 border-amber-700' },
@@ -53,9 +84,14 @@ export function IntroPage({ onWatch }: { onWatch: () => void }) {
         {/* castle (right), guard at the gate (middle), messengers heading out to the web (left) */}
         <img src={castle} alt="" style={PIXEL} className="absolute bottom-[28%] right-[4%] h-[62%]" />
         <img src={guard} alt="" style={PIXEL} className="absolute bottom-[34%] left-[48%] h-[28%]" />
-        {/* Same height as the guard's box, so all characters share one scale. */}
-        <div className="absolute bottom-[34%] left-[36%] h-[28%]"><Messenger frame={0} /></div>
-        <div className="absolute bottom-[38%] left-[10%] h-[28%]"><Messenger frame={1} /></div>
+        {/* Still picture for people who turn off animations (motion-reduce), the loop for everyone else. */}
+        <div className="motion-safe:hidden">
+          <div className="absolute bottom-[34%] left-[36%] h-[28%]"><Messenger frame={0} /></div>
+          <div className="absolute bottom-[38%] left-[10%] h-[28%]"><Messenger frame={1} /></div>
+        </div>
+        <div className="motion-reduce:hidden">
+          {TRIPS.map((t) => <Trip key={t.outcome} {...t} />)}
+        </div>
 
         <p className="absolute left-3 top-3 rounded border border-foreground/60 bg-card px-2 py-1 font-mono text-xs uppercase tracking-widest">
           The web ←
