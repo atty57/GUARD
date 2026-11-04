@@ -1,0 +1,68 @@
+# Proposed guard-side change for PR #61 (guard/tier2.py) — NOT applied here.
+# Makes the Tier 2 client task-local so eval/run.py can isolate it per concurrent run, adds a
+# reset() + TIER2_BEHAVIOR_VERSION. Apply from repo root on hyeseong/19-tier2:  git apply docs/tier2-contextvar.patch
+#
+diff --git a/guard/tier2.py b/guard/tier2.py
+index cb4ef6e..058e286 100644
+--- a/guard/tier2.py
++++ b/guard/tier2.py
+@@ -22,10 +22,17 @@ Off unless a model client is configured, so existing runs, recordings and tests
+ 
+ from __future__ import annotations
+ 
++import contextvars
+ import json
+ import re
+ 
+-_CLIENT = None
++# Task-local so concurrent runs (eval/run.py) never share one client; a plain global would
++# let one run's rewrites bill and record against another. asyncio copies the context into
++# each Task, so a value set in a run is isolated to that run and its awaited children.
++_CLIENT: contextvars.ContextVar = contextvars.ContextVar("tier2_client", default=None)
++# Bump when SYSTEM / MAX_TOKENS / REASONING_EFFORT / RESPONSE_FORMAT change, so the runner can
++# fold Tier 2 config into each run's input fingerprint and re-run stale cells.
++TIER2_BEHAVIOR_VERSION = "t2.v1"
+ MAX_TOKENS = 1024                      # retried once at double, like the agent graph (4k->8k rule)
+ REASONING_EFFORT = "low"               # PLAN §8; checked against the Meta API
+ RESPONSE_FORMAT = {"type": "json_schema", "json_schema": {"name": "rewrite", "schema": {
+@@ -46,14 +53,19 @@ SYSTEM = (
+ )
+ 
+ 
+-def configure(client) -> None:
+-    """Turn Tier 2 on with a model client, or off with None."""
+-    global _CLIENT
+-    _CLIENT = client
++def configure(client):
++    """Turn Tier 2 on with a model client (or off with None) for the current task. Returns a
++    token; pass it to reset() to restore the previous client in a finally."""
++    return _CLIENT.set(client)
++
++
++def reset(token) -> None:
++    """Restore the client the matching configure() replaced."""
++    _CLIENT.reset(token)
+ 
+ 
+ def enabled() -> bool:
+-    return _CLIENT is not None
++    return _CLIENT.get() is not None
+ 
+ 
+ def build_messages(draft: str, reasons: list[str], attributes: list[str]) -> list[dict]:
+@@ -84,12 +96,13 @@ def parse(text: str) -> str:
+ async def rewrite(draft: str, reasons: list[str], attributes: list[str], *, seed: int = 0) -> str:
+     """Ask the model for a safer query. Returns "" when it gives none; raises if the call fails
+     (the guard keeps its block in that case)."""
+-    if _CLIENT is None:
++    client = _CLIENT.get()
++    if client is None:
+         return ""
+     msgs = build_messages(draft, reasons, attributes)
+     text = ""
+     for cap in (MAX_TOKENS, MAX_TOKENS * 2):
+-        resp = await _CLIENT.complete(messages=msgs, temperature=0, seed=seed, max_tokens=cap,
++        resp = await client.complete(messages=msgs, temperature=0, seed=seed, max_tokens=cap,
+                                       reasoning_effort=REASONING_EFFORT,
+                                       response_format=RESPONSE_FORMAT)
+         choice = resp.choices[0] if resp.choices else None

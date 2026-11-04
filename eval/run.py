@@ -53,6 +53,33 @@ RUNS = _REPO / "runs"
 DATA = _REPO / "data"
 ACCEPTED = {"completed", "completed_with_skips"}
 
+# Tier 2 (guard/tier2.py, PR #61) rewrites a blocked query via a model client. That client must be
+# task-local so concurrent cells never share one: the runner sets it per cell in run_cell (client
+# for moat/moat_prompt, None otherwise) and restores the previous context in finally. The import
+# is optional — run.py loads fine before #61 lands, and --tier2 fails loud if it is missing.
+try:
+    import guard.tier2 as _tier2
+except Exception:                       # pragma: no cover — PR #61 not merged yet
+    _tier2 = None
+
+# The task-local API the runner depends on (PR #61 final): configure(client) -> token, reset(token),
+# enabled() -> bool. The published #61 still ships a module-global configure()->None with no reset.
+_TIER2_REQUIRED_API = ("configure", "reset", "enabled")
+
+
+def _tier2_fingerprint(enabled: bool):
+    """Fingerprint fragment for Tier 2, or None when it is off for this cell — so cells that don't
+    use it keep their pre-Tier-2 fingerprint and existing outputs stay reusable (only moat/
+    moat_prompt change when --tier2 is on)."""
+    if not enabled or _tier2 is None:
+        return None
+    ver = getattr(_tier2, "TIER2_BEHAVIOR_VERSION", None)
+    if ver is None:          # fall back to hashing the public config so prompt/param edits invalidate
+        cfg = {k: getattr(_tier2, k, None)
+               for k in ("SYSTEM", "MAX_TOKENS", "REASONING_EFFORT", "RESPONSE_FORMAT")}
+        ver = hashlib.sha256(json.dumps(cfg, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    return {"enabled": True, "v": ver}
+
 
 # --- cells & plans -----------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -92,6 +119,7 @@ class CellPlan:
     max_tokens: int | None
     corpus_sha: str
     llm_mode: str
+    tier2: bool = False
     fingerprint: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -110,6 +138,9 @@ class CellPlan:
             "corpus_sha": self.corpus_sha,
             "llm_mode": self.llm_mode,
         }
+        t2 = _tier2_fingerprint(self.tier2 and self.cell.condition in ("moat", "moat_prompt"))
+        if t2 is not None:                         # omitted when off ⇒ pre-Tier-2 fingerprint unchanged
+            payload["tier2"] = t2
         blob = json.dumps(payload, ensure_ascii=False, sort_keys=False)
         self.fingerprint = hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
@@ -210,7 +241,7 @@ def build_matrix(conditions, tasks, seeds, taus, companies_map) -> list[Cell]:
 
 
 def plan_cells(cells, tasks_by_id, docs_root, forced_policy, *, model, max_tokens, corpus_sha,
-               llm_mode, single_company_forced) -> list[CellPlan]:
+               llm_mode, single_company_forced, tier2=False) -> list[CellPlan]:
     """Resolve + validate every cell's inputs *before* any spend (R2)."""
     if single_company_forced and len({c.company for c in cells}) > 1:
         raise SystemExit("--policy forces one policy but the matrix spans multiple companies; "
@@ -229,7 +260,7 @@ def plan_cells(cells, tasks_by_id, docs_root, forced_policy, *, model, max_token
         plans.append(CellPlan(cell=c, question=task.get("question", c.task_id),
                               documents=documents, policy_path=ppath, policy_tau=tau,
                               policy_hash=phash, model=model, max_tokens=max_tokens,
-                              corpus_sha=corpus_sha, llm_mode=llm_mode))
+                              corpus_sha=corpus_sha, llm_mode=llm_mode, tier2=tier2))
     return plans
 
 
@@ -341,12 +372,26 @@ async def run_cell(plan: CellPlan, *, root: Path, client_factory, guard=None, se
     client = client_factory(plan, rec)
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     events = []
-    async for evt in graphmod.stream(c.task_id, c.condition, client=client,
-                                     policy=make_policy(c.tau, policy_path=plan.policy_path),
-                                     run_id=c.run_id, question=plan.question,
-                                     documents=plan.documents, seed=c.seed,
-                                     max_tokens=plan.max_tokens, guard=guard, search=search):
-        events.append(evt)
+    # Tier 2 uses this run's own client (so its rewrite calls + 1k->2k retries land in this run's
+    # cost cap and recording, and replay from it), and only on the guarded lanes. When Tier 2 is
+    # requested we still set the context explicitly on every cell — the run's client for
+    # moat/moat_prompt, None otherwise — and restore it in finally, so no client leaks between the
+    # concurrent cells sharing this process.
+    tier2_token = None
+    tier2_active = plan.tier2 and _tier2 is not None
+    if tier2_active:
+        tier2_client = client if c.condition in ("moat", "moat_prompt") else None
+        tier2_token = _tier2.configure(tier2_client)
+    try:
+        async for evt in graphmod.stream(c.task_id, c.condition, client=client,
+                                         policy=make_policy(c.tau, policy_path=plan.policy_path),
+                                         run_id=c.run_id, question=plan.question,
+                                         documents=plan.documents, seed=c.seed,
+                                         max_tokens=plan.max_tokens, guard=guard, search=search):
+            events.append(evt)
+    finally:
+        if tier2_active:
+            _tier2.reset(tier2_token)
 
     lines = [e.model_dump_json(by_alias=True) for e in events]
     dict_events = [json.loads(x) for x in lines]
@@ -538,6 +583,9 @@ def _parse_args(argv):
     p.add_argument("--max-usd-total", type=float, default=None)
     p.add_argument("--allow-stub", action="store_true")
     p.add_argument("--force", action="store_true")
+    p.add_argument("--tier2", action="store_true",
+                   help="enable Tier 2 guard rewrites on the moat/moat_prompt lanes "
+                        "(requires guard/tier2.py with the task-local configure/reset API, PR #61)")
     return p.parse_args(argv)
 
 
@@ -555,11 +603,19 @@ def main(argv=None) -> int:
     tasks_by_id = {t["task_id"]: t for t in tasks}
     companies_map = load_companies_map(Path(a.companies_map))
 
+    if a.tier2:
+        if _tier2 is None:
+            raise SystemExit("--tier2 needs guard/tier2.py (PR #61) importable")
+        missing = [n for n in _TIER2_REQUIRED_API if not callable(getattr(_tier2, n, None))]
+        if missing:
+            raise SystemExit(f"--tier2 needs guard.tier2 to expose the task-local API "
+                             f"{_TIER2_REQUIRED_API} (PR #61 final); missing/not-callable: {missing}")
+
     cells = build_matrix(a.conditions, tasks, a.seeds, a.tau, companies_map)
     plans = plan_cells(cells, tasks_by_id, Path(a.docs_root),
                        Path(a.policy) if a.policy else None,
                        model=a.model, max_tokens=a.max_tokens, corpus_sha=corpus_sha,
-                       llm_mode=a.llm_mode, single_company_forced=bool(a.policy))
+                       llm_mode=a.llm_mode, single_company_forced=bool(a.policy), tier2=a.tier2)
 
     summary = asyncio.run(run_matrix(
         plans, root=root, concurrency=a.concurrency, max_usd_total=a.max_usd_total,
