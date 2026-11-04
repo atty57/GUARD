@@ -2,7 +2,7 @@
 
 **A fail-closed privacy guard at the trust boundary between a deep-research agent's internal documents and its web searches.** It passes, rewrites or blocks any query that states a secret directly or narrows one across queries; a blocked query never reaches search. That covers the two leaks a "do not disclose" prompt doesn't stop: **direct leaks** (a secret value appears in a query) and **mosaic leaks** (individually safe queries that together narrow a secret or fingerprint a product).
 
-Tiers: 0 exact, spelled-out and encoded values and names; 1 everything already sent — ranges, derived values, the product profile; 2 a model rewrite that must pass Tiers 0–1 before dispatch.
+Tiers: 0 exact, spelled-out and encoded values and names; 1 everything already sent ranges, derived values, the product profile; 2 a model rewrite that must pass Tiers 0–1 before dispatch.
 
 ## Run in 60s
 
@@ -10,7 +10,7 @@ Tiers: 0 exact, spelled-out and encoded values and names; 1 everything already s
 make demo    # → http://127.0.0.1:8000
 ```
 
-No API key needed. The demo replays **real recorded runs**, not mock data: the "Golden · profile rewrite" recording is built from two actual Halden runs (no guard vs MOAT), and the picker labels hand-written test data as "Synthetic fixture replay". It opens on the intro page — **Watch it work** plays the golden recording.
+No API key needed. The demo replays **real recorded runs**, not mock data: the "Golden · profile rewrite" recording is built from two actual Halden runs (no guard vs MOAT), and the picker labels hand-written test data as "Synthetic fixture replay". It opens on the intro page - **Watch it work** plays the golden recording.
 
 On **Windows** without `make`, run the steps by hand (WSL users can just run `make demo`):
 
@@ -24,9 +24,9 @@ uv run uvicorn api.main:app --host 127.0.0.1 --port 8000
 
 ## Results
 
-All numbers: Halden dev company, 5 docs, 5 tasks, seed 0. Agent, Tier 2 rewrite and observer run on `muse-spark-1.3`. Raw results — pilot metrics plus the attack suite per setting: [`eval/eval_results.json`](eval/eval_results.json) (labeled), `eval/eval_results.unlabeled.json`, `eval/eval_results.internal.json`.
+All numbers: Halden dev company, 5 docs, 5 tasks, seed 0. Agent, Tier 2 rewrite and observer run on `muse-spark-1.3`. Raw results - pilot metrics plus the attack suite per setting: [`eval/eval_results.json`](eval/eval_results.json) (labeled), `eval/eval_results.unlabeled.json`, `eval/eval_results.internal.json`.
 
-### Attack suite — deliberate leaks
+### Attack suite - deliberate leaks
 
 150 attack queries across 10 leak types, each trying to get one secret past the guard, plus 150 benign queries a researcher might send. Hand-written by us for this dataset: a development suite and a first check of the guard, not a benchmark. It calls `guard.check` only (Tier 2 off, no model calls), so the same numbers appear in every label setting.
 
@@ -38,7 +38,7 @@ All numbers: Halden dev company, 5 docs, 5 tasks, seed 0. Agent, Tier 2 rewrite 
 
 Both false positives sit within `bound_tol` (3%) of a secret. E.g. "68 Wh cell weighing 250 g" never states the secret but works out to 272 Wh/kg; Tier 0 now catches it.
 
-### Natural runs — a null result
+### Natural runs - a null result
 
 60 scored runs: 5 tasks × 4 conditions (no guard, "do not disclose" prompt, MOAT, MOAT + prompt) × 3 label settings (CONFIDENTIAL / INTERNAL / unmarked) × seed 0. An observer model plays the search provider, reading only the queries that went out.
 
@@ -48,7 +48,7 @@ Leakage was low in every condition, and no paired difference is significant (low
 
 ## How Meta models are used
 
-`muse-spark-1.3` via the Meta Model API: the **agent** (drafts queries, reflects, writes the report), the **Tier 2 guard rewrite** (rewrites a flagged query; re-checked by Tiers 0–1 before dispatch), and the **observer** (the attacker that reads the query log and recovers secrets). We never use Meta's server-side `web_search` — it would bypass the guard. Search is a local USPTO BM25 corpus.
+`muse-spark-1.3` via the Meta Model API: the **agent** (drafts queries, reflects, writes the report), the **Tier 2 guard rewrite** (rewrites a flagged query; re-checked by Tiers 0–1 before dispatch), and the **observer** (the attacker that reads the query log and recovers secrets). We never use Meta's server-side `web_search` it would bypass the guard. Search is a local USPTO BM25 corpus.
 
 ## Reproduce
 
@@ -66,11 +66,11 @@ This replays the committed `runs/pilot_v6_labeled` runs; use `--llm-mode record`
 
 ## Limitations
 
-- **Pilot, not the plan's evaluation** — 1 company (Halden), 5 tasks, 1 seed, not the 30-task evaluation.
-- **Report utility not measured** — the cross-family judge the plan requires wasn't run, so we can't say what the guard costs in answer quality.
-- **Hand-written suites** — the attack and benign sets are ours, written for this dataset.
-- **Synthetic secrets** — fictional values; thresholds reference public export-control lines, with no compliance claim.
-- **The agent rarely leaks directly** under a neutral prompt, and document marking changes its caution — hence all three label settings.
+- **Pilot, not the plan's evaluation** - 1 company (Halden), 5 tasks, 1 seed, not the 30-task evaluation.
+- **Report utility not measured** - the cross-family judge the plan requires wasn't run, so we can't say what the guard costs in answer quality.
+- **Hand-written suites** - the attack and benign sets are ours, written for this dataset.
+- **Synthetic secrets** - fictional values; thresholds reference public export-control lines, with no compliance claim.
+- **The agent rarely leaks directly** under a neutral prompt, and document marking changes its caution - hence all three label settings.
 - **Same model family** for the agent and the observer.
 
 ## Docs
