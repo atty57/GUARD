@@ -5,7 +5,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { HopCard } from '@/components/HopCard'
-import { LeakMeter, type SecretLimit } from '@/components/LeakMeter'
+import { Markdown } from '@/components/Markdown'
+import { LeakMeter, laneVerdict, type SecretLimit } from '@/components/LeakMeter'
+import castle from '@/assets/castle.png'
+import { SectionHeading } from '@/components/SectionHeading'
+import { IntroPage } from '@/components/IntroPage'
 import { ProductProfile } from '@/components/ProductProfile'
 import { RunSummary } from '@/components/RunSummary'
 import { EvalDashboard } from '@/components/EvalDashboard'
@@ -13,8 +17,10 @@ import { EvalDashboard } from '@/components/EvalDashboard'
 // Two screens: Compare (one run, side by side) and Results (the experiment numbers).
 // The screen lives in the address (#results), so the back button works and a link can open
 // the dashboard directly. Anything other than #results is the Compare screen.
-type Screen = 'compare' | 'results'
-const screenFromHash = (): Screen => (window.location.hash === '#results' ? 'results' : 'compare')
+// Three screens: Intro (the default), Compare (#compare) and Results (#results).
+type Screen = 'intro' | 'compare' | 'results'
+const screenFromHash = (): Screen =>
+  window.location.hash === '#results' ? 'results' : window.location.hash === '#compare' ? 'compare' : 'intro'
 
 function useScreen(): Screen {
   const [screen, setScreen] = useState<Screen>(screenFromHash)
@@ -82,9 +88,19 @@ function App() {
 
   useEffect(() => () => sourceRef.current?.close(), [])
 
-  function startReplay() {
-    setPlaying(runs.find((r) => r.name === selected) ?? null)
-    startStream(`/api/replay/${encodeURIComponent(selected)}/stream`)
+  function startReplay(name: string = selected) {
+    setPlaying(runs.find((r) => r.name === name) ?? null)
+    startStream(`/api/replay/${encodeURIComponent(name)}/stream`)
+  }
+
+  // Intro's "Watch it work": open Compare and play the best run there is. A golden recording
+  // (the prepared demo runs) if one exists, otherwise the compare fixture.
+  function watchDemo() {
+    const name = runs.find((r) => r.name.startsWith('golden_'))?.name ?? 'compare_run'
+    setMode('replay')
+    setSelected(name)
+    window.location.assign('#compare')   // same as setting the hash; useScreen follows it
+    startReplay(name)
   }
 
   function startLive() {
@@ -133,8 +149,6 @@ function App() {
 
   // Recomputed only when events change.
   const lanes = useMemo(() => buildLanes(events), [events])
-  const priors = useMemo(() => priorsByDim([lanes.baseline, lanes.moat]), [lanes])
-
   // Policy limits depend on the run's strictness (tau), so fetch them once we know it.
   const tau = lanes.moat.started?.tau ?? lanes.baseline.started?.tau
   const [limits, setLimits] = useState<Record<string, SecretLimit>>({})
@@ -145,6 +159,12 @@ function App() {
       .then((data: { secrets: Record<string, SecretLimit> }) => setLimits(data.secrets))
       .catch(() => setLimits({})) // the meter falls back to a fixed cutoff
   }, [tau])
+
+  // Each secret's normal range (prior) comes only from the guard's interval events. Recordings
+  // without them (golden runs carry just the observer's final guesses) show those guesses as plain
+  // text with no verdict: on Halden the observer lands close to the values even with no queries,
+  // so judging its absolute guess against the policy would call every lane "Exposed".
+  const priors = useMemo(() => priorsByDim([lanes.baseline, lanes.moat]), [lanes])
 
   // What the rows need to know: has anything started, does either lane have a profile,
   // and which hop numbers appear in either lane.
@@ -195,11 +215,16 @@ function App() {
           squeezing the title. */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b px-8 py-4">
         <div className="flex flex-wrap items-center gap-6">
-          <div>
-            <h1 className="text-xl font-semibold">MOAT Guard</h1>
-            <p className="text-sm text-muted-foreground">
-              What a research agent's searches reveal, with and without the guard
-            </p>
+          <div className="flex items-center gap-3">
+            {/* Seb's castle sprite. "pixelated" keeps the 32×32 pixel art crisp when scaled up. */}
+            {/* The logo goes back to the intro. */}
+            <a href="#intro" aria-label="MOAT intro">
+              <img src={castle} alt="" width={40} height={40} style={{ imageRendering: 'pixelated' }} />
+            </a>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">MOAT</h1>
+              <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">AI search security</p>
+            </div>
           </div>
           {/* Screen tabs. Plain links: clicking one changes the #hash, and useScreen follows it. */}
           <nav aria-label="Screens" className="flex rounded-lg border p-0.5 text-sm">
@@ -248,7 +273,7 @@ function App() {
                   ? runs.map((r) => <option key={r.name} value={r.name}>{runLabels[r.name]}</option>)
                   : <option value={selected}>{selected.replace(/_/g, ' ')}</option>}
               </select>
-              <Button onClick={startReplay} disabled={running}>
+              <Button onClick={() => startReplay()} disabled={running}>
                 {running ? 'Replaying…' : 'Replay'}
               </Button>
             </>
@@ -262,8 +287,13 @@ function App() {
       </header>
 
       {/* The Compare screen's state (the run on screen) is kept while you look at Results. */}
-      {screen === 'results' ? <EvalDashboard /> : (
+      {screen === 'intro' ? <IntroPage onWatch={watchDemo} /> : screen === 'results' ? <EvalDashboard /> : (
       <main className="flex flex-col gap-6 p-8">
+        <SectionHeading
+          eyebrow="02 / The checkpoint"
+          title="One agent. Two outcomes."
+          text="The same research task, with and without a guard protecting company secrets."
+        />
         <SourceBanner
           playing={playing}
           liveStatus={liveStatus}
@@ -284,12 +314,14 @@ function App() {
               title={LANE_TITLE[lanes.baseline.started?.condition ?? baselineChoice]}
               lane={lanes.baseline}
               waiting={running}
+              verdict={laneVerdict(lanes.baseline, priors, limits)}
               choice={showBaselineChoice
                 ? { value: baselineChoice, onChange: chooseBaseline, disabled: running }
                 : undefined}
             />
           }
-          right={<LaneHeading title={LANE_TITLE[lanes.moat.started?.condition ?? 'moat']} lane={lanes.moat} waiting={running} />}
+          right={<LaneHeading title={LANE_TITLE[lanes.moat.started?.condition ?? 'moat']} lane={lanes.moat} waiting={running}
+                              verdict={laneVerdict(lanes.moat, priors, limits)} />}
         />
 
         {started && (
@@ -417,11 +449,11 @@ function SourceBanner({ playing, liveStatus, modelReplay, replayMiss }: {
 
   // Full class names written out so Tailwind keeps them in the build.
   const styles: Record<string, { box: string; badge: string }> = {
-    emerald: { box: 'border-emerald-500/40 bg-emerald-500/10', badge: 'bg-emerald-500/20 text-emerald-300' },
-    sky: { box: 'border-sky-500/40 bg-sky-500/10', badge: 'bg-sky-500/20 text-sky-300' },
-    violet: { box: 'border-violet-500/40 bg-violet-500/10', badge: 'bg-violet-500/20 text-violet-300' },
-    gold: { box: 'border-yellow-500/40 bg-yellow-500/10', badge: 'bg-yellow-500/20 text-yellow-300' },
-    amber: { box: 'border-amber-500/40 bg-amber-500/10', badge: 'bg-amber-500/20 text-amber-300' },
+    emerald: { box: 'border-emerald-500/40 bg-emerald-500/10', badge: 'bg-emerald-500/20 text-emerald-700' },
+    sky: { box: 'border-sky-500/40 bg-sky-500/10', badge: 'bg-sky-500/20 text-sky-700' },
+    violet: { box: 'border-violet-500/40 bg-violet-500/10', badge: 'bg-violet-500/20 text-violet-700' },
+    gold: { box: 'border-yellow-500/40 bg-yellow-500/10', badge: 'bg-yellow-500/20 text-yellow-800' },
+    amber: { box: 'border-amber-500/40 bg-amber-500/10', badge: 'bg-amber-500/20 text-amber-700' },
   }
   return (
     <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-4 py-2 text-sm ${styles[color].box}`}>
@@ -467,10 +499,12 @@ const NODE_LABEL: Record<string, string> = {
   generate_report: 'Writing the report',
 }
 
-function LaneHeading({ title, lane, waiting, choice }: {
+function LaneHeading({ title, lane, waiting, choice, verdict }: {
   title: string
   lane: LaneView
   waiting: boolean
+  // The lane's worst secret as one word ("Exposed"), from the leak meter's own rules.
+  verdict: { label: string; badge: string } | null
   // When set, the title is a dropdown to swap the left lane between No guard and Prompt only.
   choice?: { value: Baseline; onChange: (next: Baseline) => void; disabled: boolean }
 }) {
@@ -494,7 +528,10 @@ function LaneHeading({ title, lane, waiting, choice }: {
         ) : (
           <h2 className="text-lg font-semibold">{title}</h2>
         )}
-        {lane.started && <Badge variant="outline">condition: {lane.started.condition}</Badge>}
+        <div className="flex items-center gap-2">
+          {lane.started && <span className="font-mono text-xs text-muted-foreground">{lane.started.condition}</span>}
+          {verdict && <Badge className={`font-mono uppercase tracking-wide ${verdict.badge}`}>{verdict.label}</Badge>}
+        </div>
       </div>
       <LaneStatus lane={lane} waiting={waiting} />
     </div>
@@ -506,17 +543,17 @@ function LaneStatus({ lane, waiting }: { lane: LaneView; waiting: boolean }) {
   if (lane.complete) {
     const failed = lane.complete.status === 'failed'
     if (failed && lane.replayMiss) {
-      return <p className="text-sm text-amber-400">Stopped: no saved model answer</p>
+      return <p className="text-sm text-amber-700">Stopped: no saved model answer</p>
     }
     return (
-      <p className={`text-sm ${failed ? 'text-red-400' : 'text-muted-foreground'}`}>
+      <p className={`text-sm ${failed ? 'text-red-700' : 'text-muted-foreground'}`}>
         {failed ? 'Run failed' : 'Done'}
       </p>
     )
   }
   if (lane.started && !waiting) {
     // The stream ended (or was closed) before this lane sent run_complete.
-    return <p className="text-sm text-amber-400">Stopped before finishing</p>
+    return <p className="text-sm text-amber-700">Stopped before finishing</p>
   }
   if (lane.started) {
     return (
@@ -553,7 +590,7 @@ function ReportSlot({ lane }: { lane: LaneView }) {
   return (
     <Card size="sm">
       <CardHeader><CardTitle>Final report</CardTitle></CardHeader>
-      <CardContent>{lane.report}</CardContent>
+      <CardContent><Markdown text={lane.report} /></CardContent>
     </Card>
   )
 }

@@ -7,8 +7,8 @@ type Decision = GuardDecisionEvent['data']
 
 const DECISION_STYLE = {
   pass: { label: 'PASS', className: 'bg-secondary text-secondary-foreground' },
-  rewrite: { label: 'REWRITE', className: 'bg-amber-500/15 text-amber-400' },
-  block: { label: 'BLOCKED', className: 'bg-red-500/15 text-red-400' },
+  rewrite: { label: 'REWRITE', className: 'bg-amber-500/15 text-amber-700' },
+  block: { label: 'BLOCKED', className: 'bg-red-500/15 text-red-700' },
 } as const
 
 
@@ -35,9 +35,9 @@ export function DecisionRow({ decision }: { decision: Decision }) {
       {decision.decision === 'block' && (
         <>
           <QueryBox label="Drafted">
-            <span className="text-red-400 line-through decoration-red-400/70">{decision.original}</span>
+            <span className="text-red-700 line-through decoration-red-400/70">{decision.original}</span>
           </QueryBox>
-          <p className="text-sm font-medium text-red-400">Blocked: nothing left the company</p>
+          <p className="text-sm font-medium text-red-700">Blocked: nothing left the company</p>
         </>
       )}
 
@@ -55,10 +55,10 @@ function DiffText({ diff }: { diff: DiffOp[] }) {
       {diff.map((part, i) => {
         const space = i > 0 ? ' ' : ''
         if (part.op === 'delete') {
-          return <span key={i}>{space}<del className="text-red-400 decoration-red-400/70">{part.text}</del></span>
+          return <span key={i}>{space}<del className="text-red-700 decoration-red-400/70">{part.text}</del></span>
         }
         if (part.op === 'insert') {
-          return <span key={i}>{space}<ins className="text-emerald-400 no-underline">{part.text}</ins></span>
+          return <span key={i}>{space}<ins className="text-emerald-700 no-underline">{part.text}</ins></span>
         }
         return <span key={i}>{space}{part.text}</span>
       })}

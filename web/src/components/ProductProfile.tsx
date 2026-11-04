@@ -12,7 +12,7 @@ export function ProductProfile({ profile }: { profile: NonNullable<LaneView['pro
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           Product profile
-          <Badge className={hidden ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}>
+          <Badge className={hidden ? 'bg-emerald-500/15 text-emerald-700' : 'bg-red-500/15 text-red-700'}>
             {hidden ? 'Hidden in the crowd' : 'Identifiable'}
           </Badge>
         </CardTitle>
@@ -33,7 +33,7 @@ export function ProductProfile({ profile }: { profile: NonNullable<LaneView['pro
         </p>
 
         {profile.generalized_from && (
-          <p className="text-xs text-emerald-400">
+          <p className="text-xs text-emerald-700">
             MOAT generalized “{profile.generalized_from}” before sending, so it no longer points to one product line
           </p>
         )}

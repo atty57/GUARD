@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { EvalResults, ExternalPoint, Quality } from '@/evalTypes'
 import { Badge } from '@/components/ui/badge'
+import { SectionHeading } from '@/components/SectionHeading'
 import { Button } from '@/components/ui/button'
 import { ConditionsTable } from '@/components/ConditionsTable'
 import { HeadlineChart } from '@/components/HeadlineChart'
@@ -60,7 +61,7 @@ export function EvalDashboard() {
     return (
       <main className="p-8">
         <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm">
-          <p className="font-medium text-red-400">Couldn't load the experiment results</p>
+          <p className="font-medium text-red-700">Couldn't load the experiment results</p>
           <p className="mt-1 text-muted-foreground">{load.message}</p>
         </div>
       </main>
@@ -73,7 +74,7 @@ export function EvalDashboard() {
       {r.placeholder && (
         // Until the real eval run lands, the file holds made-up numbers. Say so loudly.
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm">
-          <Badge className="bg-amber-500/20 text-amber-300">Placeholder numbers</Badge>
+          <Badge className="bg-amber-500/20 text-amber-700">Placeholder numbers</Badge>
           <span className="text-muted-foreground">
             These are made-up values to show the layout. Real results replace them after the evaluation run.
           </span>
@@ -81,8 +82,9 @@ export function EvalDashboard() {
       )}
 
       <div>
-        <h2 className="text-lg font-semibold">Experiment results</h2>
-        <p className="text-sm text-muted-foreground">
+        <SectionHeading eyebrow="03 / The evidence" title="Protection, measured."
+                        text="Leakage, report quality, attack resistance and guard overhead, across many runs." />
+        <p className="mt-2 text-sm text-muted-foreground">
           {r.n_tasks} tasks × {r.conditions.length} conditions · {r.n_seeds} seed{r.n_seeds === 1 ? '' : 's'} ·{' '}
           {r.split} split · agent {r.models.agent}
           {r.setting && <> · {r.setting === 'labeled' ? 'docs labeled CONFIDENTIAL' : 'docs without the CONFIDENTIAL marking'}</>}
@@ -127,7 +129,7 @@ function SettingSwitch({ value, onChange }: { value: Setting; onChange: (s: Sett
 function QualityNote({ q }: { q: Quality }) {
   const problems = q.runs_excluded + q.observer_failures + q.judge_failures
   return (
-    <p className={`mt-1 text-xs ${problems ? 'text-amber-400' : 'text-muted-foreground'}`}>
+    <p className={`mt-1 text-xs ${problems ? 'text-amber-700' : 'text-muted-foreground'}`}>
       {q.runs_scored} runs scored
       {q.runs_excluded > 0 && ` · ${q.runs_excluded} left out (incomplete observer reply)`}
       {q.judge_failures > 0 && ` · ${q.judge_failures} report scores missing`}
