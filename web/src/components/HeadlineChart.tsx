@@ -99,7 +99,7 @@ export function HeadlineChart({ conditions, sweep }: { conditions: ConditionResu
           </ul>
         )}
 
-        {Y && <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
+        {Y && <svg viewBox={`0 0 ${W} ${H}`} className="mx-auto w-full max-w-2xl" role="img"
              aria-label={`Leak score against report quality for ${conditions.length} conditions and MOAT at ${sweep.length} strictness levels`}>
           {/* grid lines and axis labels */}
           {ticks(x0, x1).map((t) => (

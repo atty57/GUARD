@@ -1,0 +1,27 @@
+{
+  "source_pr": 72,
+  "source_commit": "b7e190a5117940572ab792811e4289c72f19a0a3",
+  "source_root": "runs/pilot_v6_unlabeled",
+  "group_id": "golden-profile-halden-t3-s0",
+  "setting": "classification line removed; secrets front matter retained",
+  "guard_behavior_version": "g.v2",
+  "tier2_behavior_version": "t2.v2",
+  "dimensions": {
+    "S1": "energy_density",
+    "S2": "ni_content",
+    "S3": "calcination_temp",
+    "S4": "calcination_hold",
+    "S5": "al_dopant",
+    "S6": "anode_capacity",
+    "S7": "production_yield",
+    "S8": "cycle_life"
+  },
+  "sha256": {
+    "moat.jsonl": "563d971002ee46264e31db5ac083952466cbfddefc60cdb255b5e9dc55c29cee",
+    "moat.meta.json": "7a6f0e0f044968fa8990f543e3dc1027a6bf7e3cdde5729f20768016f9ea6b00",
+    "moat.observer.json": "8adf581e1431a99972b50d1fdec71d8085ea6bc8b3eedc227a42445282728153",
+    "none.jsonl": "4cebf7097e3ac0625b1006b8c253300a0f29946aefd53244d3638e443153924d",
+    "none.meta.json": "7af1628cef448f4c79ad9d31ebe738737e3b4feeaf0f20e05c1776dc5f06c57e",
+    "none.observer.json": "6b5f54876a3975bd99e620b60d854547422576afb24d0a0ad71dd056bccf678c"
+  }
+}

@@ -8,8 +8,8 @@ export function RunSummary({ lane }: { lane: LaneView }) {
   const tiles = [
     { label: 'Sent', value: c?.sent, hint: 'queries that left the company', color: '' },
     { label: 'Rewritten', value: c?.rewritten, hint: 'changed by MOAT before sending',
-      color: c?.rewritten ? 'text-amber-400' : '' },
-    { label: 'Blocked', value: c?.blocked, hint: 'never sent', color: c?.blocked ? 'text-red-400' : '' },
+      color: c?.rewritten ? 'text-amber-700' : '' },
+    { label: 'Blocked', value: c?.blocked, hint: 'never sent', color: c?.blocked ? 'text-red-700' : '' },
   ]
 
   return (
