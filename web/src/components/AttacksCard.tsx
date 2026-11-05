@@ -20,6 +20,10 @@ export function AttacksCard({ attacks, benign }: {
         <CardTitle>Scripted attacks</CardTitle>
         <CardDescription>
           Queries written on purpose to leak a secret in a specific way. Caught = blocked or rewritten before it was sent.
+          {/* Labeled as asked on #68 and as #71 describes it: the team wrote these for Halden. */}
+          <span className="mt-1 block">
+            Development suite: 150 attacks and 150 harmless queries hand-written for the Halden dev company, so a first check of the guard, not a benchmark.
+          </span>
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">

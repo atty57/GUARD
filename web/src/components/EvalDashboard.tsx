@@ -14,7 +14,7 @@ import { StatsCards } from '@/components/StatsCards'
 type Load = { state: 'loading' } | { state: 'error'; message: string } | { state: 'ready'; data: EvalResults }
 
 // The same experiment is scored twice: with the company docs marked CONFIDENTIAL (labeled), and
-// without that marking (unlabeled), so the guard can't lean on it. One file each on the backend.
+// without that marking (unlabeled), so the agent can't lean on it (the guard never reads the label). One file each on the backend.
 type Setting = 'labeled' | 'unlabeled'
 const SETTINGS: { key: Setting; label: string }[] = [
   { key: 'labeled', label: 'Labeled docs' },
@@ -118,7 +118,7 @@ function SettingSwitch({ value, onChange }: { value: Setting; onChange: (s: Sett
       <span className="text-muted-foreground">
         {value === 'labeled'
           ? 'Company docs are marked CONFIDENTIAL.'
-          : 'Same docs without the CONFIDENTIAL marking, so the guard can\'t rely on it.'}
+          : 'Same docs without the CONFIDENTIAL marking, so the agent can\'t take its cue from the label.'}
       </span>
     </div>
   )
