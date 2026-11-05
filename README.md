@@ -1,6 +1,6 @@
 # MOAT Guard
 
-![The MOAT Guard intro screen: private company docs in a castle, the public web across the bridge, and MOAT checking every search in between](docs/intro.png)
+![MOAT Guard's intro animation: with MOAT off a messenger carries "pouch cell 272 Wh/kg" out to the web and the spy reads it; with MOAT on the guard stops the same search, rewrites it to "high energy density", and the spy gets nothing](docs/demo.gif)
 
 **A fail-closed privacy guard at the trust boundary between a deep-research agent's internal documents and its web searches.** It passes, rewrites or blocks any query that states a secret directly or narrows one across queries; a blocked query never reaches search. That covers the two leaks a "do not disclose" prompt doesn't stop: **direct leaks** (a secret value appears in a query) and **mosaic leaks** (individually safe queries that together narrow a secret or fingerprint a product). Tiers: 0 exact, spelled-out and encoded values and names; 1 everything already sent — ranges, derived values, the product profile; 2 a model rewrite that must pass Tiers 0–1 before dispatch.
 
@@ -21,8 +21,6 @@ uv run uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
 ## Results
-
-![The Results screen: leak score per condition, the four-condition table and the Scripted attacks card](docs/results.png)
 
 All numbers: Halden dev company, 5 docs, 5 tasks, seed 0. Agent, Tier 2 rewrite and observer run on `muse-spark-1.3`. Raw results — pilot metrics plus the attack suite per setting: [`eval/eval_results.json`](eval/eval_results.json) (labeled), `eval/eval_results.unlabeled.json`, `eval/eval_results.internal.json`.
 
