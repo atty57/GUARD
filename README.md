@@ -1,8 +1,8 @@
 # MOAT Guard
 
-**A fail-closed privacy guard at the trust boundary between a deep-research agent's internal documents and its web searches.** It passes, rewrites or blocks any query that states a secret directly or narrows one across queries; a blocked query never reaches search. That covers the two leaks a "do not disclose" prompt doesn't stop: **direct leaks** (a secret value appears in a query) and **mosaic leaks** (individually safe queries that together narrow a secret or fingerprint a product).
+![MOAT Guard's intro animation: with MOAT off a messenger carries "pouch cell 272 Wh/kg" out to the web and the spy reads it; with MOAT on the guard stops the same search, rewrites it to "high energy density", and the spy gets nothing](docs/demo.gif)
 
-Tiers: 0 exact, spelled-out and encoded values and names; 1 everything already sent — ranges, derived values, the product profile; 2 a model rewrite that must pass Tiers 0–1 before dispatch.
+**A fail-closed privacy guard at the trust boundary between a deep-research agent's internal documents and its web searches.** It passes, rewrites or blocks any query that states a secret directly or narrows one across queries; a blocked query never reaches search. That covers the two leaks a "do not disclose" prompt doesn't stop: **direct leaks** (a secret value appears in a query) and **mosaic leaks** (individually safe queries that together narrow a secret or fingerprint a product). Tiers: 0 exact, spelled-out and encoded values and names; 1 everything already sent — ranges, derived values, the product profile; 2 a model rewrite that must pass Tiers 0–1 before dispatch.
 
 ## Run in 60s
 
@@ -10,7 +10,7 @@ Tiers: 0 exact, spelled-out and encoded values and names; 1 everything already s
 make demo    # → http://127.0.0.1:8000
 ```
 
-No API key needed. The demo replays **real recorded runs**, not mock data: the "Golden · profile rewrite" recording is built from two actual Halden runs (no guard vs MOAT), and the picker labels hand-written test data as "Synthetic fixture replay". It opens on the intro page — **Watch it work** plays the golden recording.
+No API key needed. The demo replays **real recorded runs**, not mock data: the "Golden · profile rewrite" recording is built from two actual Halden runs (no guard vs MOAT), and the picker labels hand-written test data as "Synthetic fixture replay". It opens on the intro page — **Watch it work** plays the golden recording. **Demo video:** _link before submission_.
 
 On **Windows** without `make`, run the steps by hand (WSL users can just run `make demo`):
 
@@ -19,8 +19,6 @@ uv sync
 cd web && npm ci && npm run build && cd ..
 uv run uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
-
-**Demo video:** _link before submission_
 
 ## Results
 
